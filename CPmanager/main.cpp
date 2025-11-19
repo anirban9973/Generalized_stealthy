@@ -1,7 +1,8 @@
 /**
  *	Author	: Jaeuk Kim
  *	Email	: phy000.kim@gmail.com
- *	Date	:	September 2020 */
+ *	Created	: September 2020 
+ *	Modified: November 2025 */
 
 /** \file main.cpp
  *	\brief Implementations for converting ConfigPack files to txt formats 
@@ -34,33 +35,11 @@ void ReadFunction(std::vector<GeometryVector> & result, const std::string & InFi
 #include <algorithm>
 int main(int argc, char ** argv) {
 
-	char tempstring[1000];
-	std::istream & ifile = std::cin;
+	//char tempstring[1000];
+	//std::istream & ifile = std::cin;
 	std::ostream & ofile = std::cout;
-	char name[200] = {};
-	char dir[] = "./results/n1/";
 	omp_set_num_threads(4);
 	
-	//  {
-	//  	ofile << "input name (ConfigPack) ?";
-	//  	ifile >> name;
-	//  	ConfigurationPack cp(name);
-	//  	ofile << "output name (ConfigPack) ?";
-	//  	ifile >> name;
-
-	//  	ConfigurationPack CP(name);
-
-	//  	for(int i=0; i<cp.NumConfig(); i++){
-	//  		Configuration c = cp.GetConfig(i);
-
-	//  		double vol = c.NumParticle();
-	//  		c.Resize(vol);
-
-	//  		CP.AddConfig(c);
-	//  	}
-	//  }
-
-	//  return 0;
 
 
 	int option = std::atoi(argv[1]);

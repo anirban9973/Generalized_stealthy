@@ -47,7 +47,7 @@ EXEdir = ~/EXC/# directory for executables
 TARGET = $(EXEdir)manager.out #te.out## output file name
 
 #----- Flags and libraries -----
-GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas -lm
+GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas -lm -Wl,-rpath,/home/jaeukk/lib/gsl/lib
 LIBS = -lm $(GSLLIB) 
 endif
 
@@ -57,8 +57,8 @@ endif
 #==============================
 CC = g++
 DEBUG = -g
-CFLAGS = -Wall -std=c++0x $(DEBUG) $(IDIR) -c -O3 -fopenmp
-LFLAGS = -Wall -std=c++0x $(DEBUG) $(LIBS) -O3 -fopenmp
+CFLAGS = -Wall -Wno-reorder -std=c++14 $(DEBUG) $(IDIR) -c -O3 -fopenmp
+LFLAGS = -Wall -Wno-reorder -std=c++14 $(DEBUG) $(LIBS) -O3 -fopenmp
 
 #==============================
 #	Flags and libraries
