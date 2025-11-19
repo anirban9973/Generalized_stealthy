@@ -66,11 +66,11 @@ void IsotropicStructureFactor(std::function<const Configuration(size_t i)> GetCo
 	}
 	size_t NumBin = std::floor(LinearKMax / KPrecision) + 1;
 	std::vector<SkBin> vSkBin; //(NumBin, SkBin());
-
 	DimensionType d = 0;
 	double V = 0.0;
 	GeometryVector prevBasis [ ::MaxDimension];
 	std::vector<GeometryVector> ks;
+	std::vector<double> k_amp;
 	if(Verbosity>1){
 		std::cout<<"Computing S(k)";
 		if (option == 0){
@@ -97,18 +97,27 @@ void IsotropicStructureFactor(std::function<const Configuration(size_t i)> GetCo
 		Configuration CurrentConfig = GetConfigsFunction(j);
 		if(CurrentConfig.GetDimension()==0)
 			break;
-		if(j!=0)
+		if(j > 0)
 		{
 			bool SameBasis = true;
 			for(DimensionType i=0; i<CurrentConfig.GetDimension(); i++)
 				if( !(prevBasis[i]==CurrentConfig.GetBasisVector(i)) )
 					SameBasis=false;
 
-			if(SameBasis==false)
+			if(SameBasis==false){
 				ks=GetKs(CurrentConfig, CircularKMax, LinearKMax, SampleProbability, true, CircularKMin);
+				k_amp.resize(ks.size(), GeometryVector(static_cast<double>(CurrentConfig.GetDimension())));
+				for (size_t i = 0; i < ks.size(); i++){
+					k_amp[i] = np.sqrt(ks[i].Modulus2());
+				}
+			}
 		}
 		else{
 			ks = GetKs(CurrentConfig, CircularKMax, LinearKMax, SampleProbability, false, CircularKMin);
+			k_amp.resize(ks.size(), GeometryVector(static_cast<double>(CurrentConfig.GetDimension())));
+			for (size_t i = 0; i < ks.size(); i++){
+				k_amp[i] = np.sqrt(ks[i].Modulus2());
+			}
 			d = CurrentConfig.GetDimension();
 			V = CurrentConfig.PeriodicVolume();
 			if (option == 2){
@@ -116,40 +125,41 @@ void IsotropicStructureFactor(std::function<const Configuration(size_t i)> GetCo
 			}
 		}
 
-		signed long end = ks.size();
+		const size_t end = ks.size();
 
 		if (option == 0 || option == 1){
 	#pragma omp parallel for schedule(guided)
-			for(signed long i=0; i<end; i++)
+			for(size_t i=0; i<end; i++)
 			{
 				double s=StructureFactor(CurrentConfig, ks[i]);
-				double k2 = ks[i].Modulus2();
-				size_t Bin = std::floor(std::sqrt(k2) / KPrecision);
-	#pragma omp atomic
+				//double k2 = ks[i].Modulus2();
+				size_t Bin = std::floor(k_amp[i] / KPrecision);
+		#pragma omp atomic
 				vSkBin[Bin].Sum1 += 1.0;
 				//-----added-----
-	#pragma omp atomic
-				vSkBin[Bin].SumK1 += sqrt(k2);
+		#pragma omp atomic
+				vSkBin[Bin].SumK1 += k_amp[i]; 
 				//---------------
-	#pragma omp atomic
-				vSkBin[Bin].SumK2 += k2;
-	#pragma omp atomic
+		#pragma omp atomic
+				vSkBin[Bin].SumK2 += k_amp[i]*k_amp[i];
+		#pragma omp atomic
 				vSkBin[Bin].SumS += s;
-	#pragma omp atomic
+		#pragma omp atomic
 				vSkBin[Bin].SumS2 += s*s;
-				
+					
 			}
 		}
-		else {
+		else 
+		{
 			/* at each wavevector */
-#pragma omp parallel for schedule(guided)
-			for(signed long i=0; i<end; i++)
+			#pragma omp parallel for schedule(guided)
+			for(size_t i=0; i<end; i++)
 			{
 				double s=StructureFactor(CurrentConfig, ks[i]);
-				double k2 = ks[i].Modulus2();
+				//double k2 = ks[i].Modulus2();
 				vSkBin[i].Sum1 += 1.0;
-				vSkBin[i].SumK1 += sqrt(k2);
-				vSkBin[i].SumK2 += k2;
+				vSkBin[i].SumK1 += k_amp[i];
+				vSkBin[i].SumK2 += k_amp[i]*k_amp[i];
 				vSkBin[i].SumS += s;
 				vSkBin[i].SumS2 += s*s;				
 			}			
@@ -171,7 +181,7 @@ void IsotropicStructureFactor(std::function<const Configuration(size_t i)> GetCo
 	}
 
 	//#pragma omp parallel for schedule(guided)
-	for (int i = 0; i < vSkBin.size(); i++ ){
+	for (size_t i = 0; i < vSkBin.size(); i++ ){
 		auto iter = vSkBin.begin() + i;
 		if (iter->Sum1 > 0.0){
 			GeometryVector temp(4);

@@ -18,8 +18,8 @@ void IsotropicTwoPairCorrelation(std::function<const Configuration(size_t i)> Ge
 	size_t NumConfigsSampled=0;
 	size_t TotalAtomCount=0;
 	double AverageDensity=0;
-	signed long StartParticle=0;
-	signed long NumParticle=1;
+	size_t StartParticle=0;
+	size_t NumParticle=1;
 	for(size_t j=0; j<NumConfigs; j++)
 	{
 		Configuration Config = GetConfigsFunction(j);
@@ -27,13 +27,12 @@ void IsotropicTwoPairCorrelation(std::function<const Configuration(size_t i)> Ge
 		NumParticle=Config.NumParticle();
 		if(j==0)
 			dim=Config.GetDimension();
-		size_t NumParticle=Config.NumParticle();
 		//pre-allocate
 		Config.IterateThroughNeighbors(GeometryVector(Config.GetDimension()), MaxDistance, 
 			[](const GeometryVector &shift, const GeometryVector &LatticeShift, const signed long *PeriodicShift, const size_t SourceAtom) ->void
 		{
 		});
-		for(signed long i=0; i<NumParticle; i++)
+		for(size_t i=0; i<NumParticle; i++)
 		{
 			//Configuration::particle * a=Config.GetParticle(i);
 			Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(i), MaxDistance, 
@@ -93,7 +92,7 @@ void IsotropicTwoPairCorrelation(std::function<const Configuration(size_t i)> Ge
 #pragma omp parallel
 		{
 #pragma omp for schedule(guided)
-			for(signed long i=StartParticle; i<NumParticle; i++)
+			for(size_t i=StartParticle; i<NumParticle; i++)
 			{
 				Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(i), MaxDistance, 
 					[&HGen, &i](const GeometryVector &shift, const GeometryVector &LatticeShift, const signed long *PeriodicShift, const size_t SourceAtom) ->void
@@ -188,7 +187,7 @@ void IsotropicTwoPairCorrelation(std::function<const Configuration(size_t i)> Ge
 #pragma omp parallel
 		{
 #pragma omp for schedule(guided)
-			for (signed long i = 0; i<NumParticle; i++)
+				for (size_t i = 0; i<NumParticle; i++)
 			{
 				//Configuration::particle * a=Config.GetParticle(i);
 				Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(i), MaxDistance,
@@ -281,7 +280,7 @@ void TwoPairCorrelation_2DAnisotropic(std::function<const Configuration(size_t i
 			[](const GeometryVector &shift, const GeometryVector &LatticeShift, const signed long *PeriodicShift, const size_t SourceAtom) ->void
 		{
 		});
-		for(signed long i=0; i<NumParticle; i++)
+		for(size_t i=0; i<NumParticle; i++)
 		{
 			//Configuration::particle * a=Config.GetParticle(i);
 			Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(i), MaxDistance, 
@@ -346,10 +345,10 @@ void TwoPairCorrelation_2DAnisotropic(std::function<const Configuration(size_t i
 		});
 
 
-//#pragma omp parallel
+#pragma omp parallel
 		{
-//#pragma omp for schedule(guided)
-			for(signed long i=0; i<NumParticle; i++)
+#pragma omp for schedule(guided)
+			for(size_t i=0; i<NumParticle; i++)
 			{
 				//Configuration::particle * a=Config.GetParticle(i);
 				Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(i), MaxDistance, 
@@ -431,8 +430,6 @@ void NearestNeighborDistrubution(std::function<const Configuration(size_t i)> Ge
 
 	std::vector<double> distances;
 
-	DimensionType dim;
-
 	size_t NumConfigsSampled=0;
 	size_t TotalAtomCount=0;
 	double AverageDensity=0;
@@ -442,18 +439,17 @@ void NearestNeighborDistrubution(std::function<const Configuration(size_t i)> Ge
 		//if(Verbosity>3 || (Verbosity>2&&j%100==0) )
 		//	std::cout<<j<<"/"<<NumConfigs<<"configurations processed\n";
 		Configuration Config = GetConfigsFunction(j);
-		if(j==0)
-			dim=Config.GetDimension();
-		size_t NumParticle=Config.NumParticle();
-		double TypicalLength=std::pow(Config.PeriodicVolume()/Config.NumParticle(), 1.0/Config.GetDimension())*1.5;
-		for(size_t j=0; j<Config.NumParticle(); j++)
+
+		const size_t NumParticle = Config.NumParticle();
+		double TypicalLength=std::pow(Config.PeriodicVolume()/NumParticle, 1.0/Config.GetDimension())*1.5;
+		for(size_t particle=0; particle<NumParticle; particle++)
 		{
 			std::vector<GeometryVector> neighbors;
 			double l=TypicalLength;
 			while(neighbors.size()<2)
 			{
 				neighbors.clear();
-				Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(j), l, [&neighbors](const GeometryVector & shift, const GeometryVector & LatticeShift, const signed long * PeriodicShift, const size_t Sourceparticle) ->void
+				Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(particle), l, [&neighbors](const GeometryVector & shift, const GeometryVector & LatticeShift, const signed long * PeriodicShift, const size_t Sourceparticle) ->void
 				{
 					neighbors.push_back(shift);
 				});
@@ -493,18 +489,18 @@ void NearestNeighborDistrubution(std::function<const Configuration(size_t i)> Ge
 		//if(Verbosity>3 || (Verbosity>2&&j%100==0) )
 		//	std::cout<<j<<"/"<<NumConfigs<<"configurations processed\n";
 		Configuration Config = GetConfigsFunction(j);
-		size_t NumParticle=Config.NumParticle();
+		const size_t NumParticle=Config.NumParticle();
 		//Configuration::particle * p0=Config.GetParticle(0);
 
-		for(size_t j=0; j<Config.NumParticle(); j++)
+		for(size_t particle=0; particle<NumParticle; particle++)
 		{
 			std::vector<GeometryVector> neighbors;
-			double TypicalLength=std::pow(Config.PeriodicVolume()/Config.NumParticle(), 1.0/Config.GetDimension())*1.5;
+			double TypicalLength=std::pow(Config.PeriodicVolume()/NumParticle, 1.0/Config.GetDimension())*1.5;
 			double l=TypicalLength;
 			while(neighbors.size()<2)
 			{
 				neighbors.clear();
-				Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(j), l, [&neighbors](const GeometryVector & shift, const GeometryVector & LatticeShift, const signed long * PeriodicShift, const size_t Sourceparticle) ->void
+				Config.IterateThroughNeighbors(Config.GetRelativeCoordinates(particle), l, [&neighbors](const GeometryVector & shift, const GeometryVector & LatticeShift, const signed long * PeriodicShift, const size_t Sourceparticle) ->void
 				{
 					neighbors.push_back(shift);
 				});
@@ -581,9 +577,9 @@ void HvDistrubution(std::function<const Configuration(size_t i)> GetConfigsFunct
 		Configuration Config = GetConfigsFunction(j);
 		if(j==0)
 			dim=Config.GetDimension();
-		size_t NumParticle=Config.NumParticle();
-		double TypicalLength=std::pow(Config.PeriodicVolume()/Config.NumParticle(), 1.0/Config.GetDimension())*1.5;
-		for (size_t j = 0; j<Config.NumParticle()*OverSampling; j++)
+		const size_t NumParticle=Config.NumParticle();
+		double TypicalLength=std::pow(Config.PeriodicVolume()/NumParticle, 1.0/Config.GetDimension())*1.5;
+		for (size_t j = 0; j<NumParticle*OverSampling; j++)
 		{
 			std::vector<GeometryVector> neighbors;
 			double l=TypicalLength;
@@ -624,17 +620,17 @@ void HvDistrubution(std::function<const Configuration(size_t i)> GetConfigsFunct
 	//	std::cout<<"counting pair distances...";
 	for(size_t j=NumConfigsSampled; j<NumConfigs; j++)
 	{
-		pd++;
-		//if(Verbosity>3 || (Verbosity>2&&j%100==0) )
-		//	std::cout<<j<<"/"<<NumConfigs<<"configurations processed\n";
-		Configuration Config = GetConfigsFunction(j);
-		size_t NumParticle=Config.NumParticle();
-		//Configuration::particle * p0=Config.GetParticle(0);
+			pd++;
+			//if(Verbosity>3 || (Verbosity>2&&j%100==0) )
+			//	std::cout<<j<<"/"<<NumConfigs<<"configurations processed\n";
+			Configuration Config = GetConfigsFunction(j);
+			const size_t NumParticle=Config.NumParticle();
+			//Configuration::particle * p0=Config.GetParticle(0);
 
-		for(size_t j=0; j<Config.NumParticle(); j++)
-		{
-			std::vector<GeometryVector> neighbors;
-			double TypicalLength=std::pow(Config.PeriodicVolume()/Config.NumParticle(), 1.0/Config.GetDimension())*1.5;
+			for(size_t j=0; j<NumParticle; j++)
+			{
+				std::vector<GeometryVector> neighbors;
+				double TypicalLength=std::pow(Config.PeriodicVolume()/NumParticle, 1.0/Config.GetDimension())*1.5;
 			double l=TypicalLength;
 			while(neighbors.size()<2)
 			{

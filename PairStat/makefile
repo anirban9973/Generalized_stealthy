@@ -44,13 +44,13 @@ IDIR = -I/usr/include/ -I/home/jaeukk/lib/gsl/include -I/usr/local/include/ -I$(
 ODIR = obj/# object directory
 #SDIR = ./# source directory
 #Idir = ./# header directory
-EXEdir = ./# directory for executables
+EXEdir = /home/jaeukk/EXC/# directory for executables
 
 #	Executable
 TARGET = $(EXEdir)PairStat.out
 
 #----- Flags and libraries -----
-GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas
+GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas -Wl,-rpath,/home/jaeukk/lib/gsl/lib
 NLOPTLIB = -L/usr/local/lib -lnlopt
 LIBS = -lm $(GSLLIB) $(NLOPTLIB)
 PREPRO = 
@@ -61,8 +61,8 @@ endif
 #==============================
 CC = g++
 DEBUG = -g
-CFLAGS = -Wall -std=c++11 $(DEBUG) $(IDIR) -c -fopenmp -O3
-LFLAGS = -Wall -std=c++11 $(DEBUG) $(LIBS) -fopenmp -O3
+CFLAGS = -Wall -std=c++14 $(DEBUG) $(IDIR) -c -fopenmp -O3
+LFLAGS = -Wall -std=c++14 $(DEBUG) $(LIBS) -fopenmp -O3
 
 $(info	$(CFLAGS))
 $(info	$(LFLAGS))
