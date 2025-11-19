@@ -1,10 +1,13 @@
 /**
  *	Author	: Ge Zhang
  *	Email	: 
- *	Date	:	2015? */
+ *	Created	:	2015? 
+ *	Comments: Jaeuk Kim (November 2025).
+ */
 
 /** \file GeometryVector.h
  *	\brief Header file to define vectors in Euclidean space and their operatios. 
+ * 			(November 2025)
  *	Some type-related warnings are resolved. */
 
 
@@ -25,12 +28,15 @@
 
 
 //In debug mode, this class also records the dimension of the GeometryVector.
+/** \brief Fixed-size vector in Euclidean space supporting basic arithmetic. */
 class GeometryVector
 {
 public:
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
 	DimensionType Dimension;
 #endif
+
+	/** \brief Record the current dimension (debug builds only). */
 	void SetDimension(DimensionType d)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -39,6 +45,8 @@ public:
 	}
 
 	double x[ ::MaxDimension];
+
+	/** \brief Default-construct a zero vector of unspecified dimension. */
 	GeometryVector()
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -49,6 +57,8 @@ public:
 	}
 	//do not change this "int" to "DimensionType"!
 	//otherwize GeometryVector(2) would be ambiguous.
+
+	/** \brief Construct a zero vector with an explicit dimension. */
 	GeometryVector(int dimension)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -57,6 +67,8 @@ public:
 		for(int i=0; i< ::MaxDimension; i++)
 			this->x[i]=0.0L;
 	}
+
+	/** \brief Construct a 1D vector. */
 	GeometryVector(double xx)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -67,6 +79,8 @@ public:
 		for(int i=1; i< ::MaxDimension; i++)
 			this->x[i]=0;
 	}
+
+	/** \brief Construct a 2D vector. */
 	GeometryVector(double xx, double yy)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -78,6 +92,8 @@ public:
 		for(int i=2; i< ::MaxDimension; i++)
 			this->x[i]=0;
 	}
+
+	/** \brief Construct a 3D vector. */
 	GeometryVector(double xx, double yy, double zz)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -90,6 +106,8 @@ public:
 		for(int i=3; i< ::MaxDimension; i++)
 			this->x[i]=0;
 	}
+
+	/** \brief Construct a 4D vector. */
 	GeometryVector(double xx, double yy, double zz, double aa)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -103,6 +121,8 @@ public:
 		for(int i=4; i< ::MaxDimension; i++)
 			this->x[i]=0;
 	}
+
+	/** \brief Copy-construct from another vector. */
 	GeometryVector(const GeometryVector & src)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -110,39 +130,43 @@ public:
 		this->Dimension=src.Dimension;
 #endif
 		//std::memcpy(this->x, src.x, ::MaxDimension*sizeof(double));
-		#pragma ivdep
 		for(int i=0; i< ::MaxDimension; i++)
 			this->x[i]=src.x[i];
 	}
+
+	/** \brief Add components from another vector in-place. */
 	void AddFrom(const GeometryVector & right)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
 		assert(right.Dimension==this->Dimension);
 		assert(right.Dimension<= ::MaxDimension);
 #endif
-		#pragma ivdep
 		for(int i=0; i< ::MaxDimension; i++)
 			this->x[i]+=right.x[i];
 	}
+
+	/** \brief Subtract components from another vector in-place. */
 	void MinusFrom(const GeometryVector & right)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
 		assert(right.Dimension==this->Dimension);
 		assert(right.Dimension<= ::MaxDimension);
 #endif
-		#pragma ivdep
 		for(int i=0; i< ::MaxDimension; i++)
 			this->x[i]-=right.x[i];
 	}
+
+	/** \brief Scale all components by a constant. */
 	void MultiplyFrom(const double & right)
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
 		assert(this->Dimension<= ::MaxDimension);
 #endif
-		#pragma ivdep
 		for(int i=0; i< ::MaxDimension; i++)
 			this->x[i]*=right;
 	}
+
+	/** \brief Inner product with another vector. */
 	double Dot(const GeometryVector & right) const		// equivalent to the inner product
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -155,17 +179,19 @@ public:
 #else
 		for(int i=0; i< ::MaxDimension; i++)
 #endif
-			result+=this->x[i]*right.x[i];
+				result+=this->x[i]*right.x[i];
 		return result;
 	}
 	//cross product
+
+	/** \brief 3D cross product. */
 	GeometryVector Cross(const GeometryVector & right) const
 	{
 		GeometryVector result((int)3);
-//#ifdef GEOMETRYVECTOR_RECORDDIMENSION
+	//#ifdef GEOMETRYVECTOR_RECORDDIMENSION
 		assert(right.Dimension == 3);
 		assert(this->Dimension == 3);
-//#endif
+	//#endif
 
 		result.x[0] = this->x[1] * right.x[2] - this->x[2] * right.x[1];
 		result.x[1] = this->x[2] * right.x[0] - this->x[0] * right.x[2];
@@ -174,10 +200,14 @@ public:
 		return result;
 	}
 
+
+	/** \brief Squared Euclidean norm. */
 	double Modulus2(void) const
 	{
 		return this->Dot(*this);
 	}
+
+	/** \brief Exact component-wise equality test. */
 	bool IsEqual(const GeometryVector & right) const
 	{
 #ifdef GEOMETRYVECTOR_RECORDDIMENSION
@@ -193,17 +223,25 @@ public:
 #endif
 		return true;
 	}
+
+	/** \brief Stream out the first dim coordinates separated by tabs. */
 	void OutputCoordinate(std::ostream & os, DimensionType dim) const
 	{
 		for(int i=0; i< dim; i++)
 			os<<this->x[i]<<" \t";
 	}
+
+	/** \brief Read dim coordinates from a stream. */
 	void InputCoordinate(std::istream & is, DimensionType dim)
 	{
 		for(int i=0; i< dim; i++)
 			is>>this->x[i];
 	}
+
+	/** \brief Write coordinates in binary form. */
 	void WriteBinary(std::ostream & ofile, DimensionType dimension) const;
+
+	/** \brief Read coordinates from binary form. */
 	void ReadBinary(std::istream & ifile, DimensionType dimension);
 
 	friend inline GeometryVector SameDimensionZeroVector(const GeometryVector & src);

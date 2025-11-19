@@ -30,11 +30,11 @@ double RandomGenerator::RandomDouble(const std::function<double(double)> &invers
 	}
 
 int RandomGenerator::PoissonRNG(double mean){
-	//static boost::random::poisson_distribution<int> rgn(mean);
-	//static boost::random::variate_generator<boost::mt19937, boost::random::poisson_distribution<int>> rvt(this->gen, rgn);
-	boost::random::poisson_distribution<int> rgn(mean);
-	boost::random::variate_generator<boost::mt19937, boost::random::poisson_distribution<int>> rvt(this->gen, rgn);
-	return rvt();
+	if (mean <= 0.0) {
+		return 0;
+	}
+	std::poisson_distribution<int> dist(mean);
+	return dist(this->gen);
 }
 void GetRandomVector(int Dimension, RandomGenerator & gen, double * result)
 {

@@ -1112,13 +1112,13 @@ void DigitizeConfiguration(const Configuration & c, double radius, size_t MeshSi
 	size_t MeshTotal = std::pow(MeshSide, dim);
 	struct VicinityMesh
 	{
-		signed long DeltaIndex[::MaxDimension];
+		signed long DeltaIndex[::MaxDimension] = {};
 	};
 
 	//get the list of mesh points occupied by a sphere
 	std::vector<VicinityMesh> mesh;
 
-	GeometryVector newbas[::MaxDimension];
+	GeometryVector newbas[::MaxDimension] = {};
 	for (int i = 0; i<dim; i++)
 		newbas[i] = c.GetBasisVector(i)*(1.0 / MeshSide);
 	Configuration * pt = new Configuration(dim, newbas, ::MaxDistance, false);

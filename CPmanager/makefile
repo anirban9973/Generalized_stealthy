@@ -35,6 +35,8 @@ endif
 ifeq ($(MACHINE), HOME)
 $(info	$(MACHINE))
 #----- Directories ------------
+core = ../cores/
+
 IDIR = -I/usr/include/ -I/home/jaeukk/lib/gsl/include -I$(core)# include directory
 ODIR = obj/# object directory
 #SDIR = ./# source directory
