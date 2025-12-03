@@ -38,6 +38,7 @@ int main(int argc, char ** argv) {
 	//char tempstring[1000];
 	//std::istream & ifile = std::cin;
 	std::ostream & ofile = std::cout;
+	char name[200] = {};
 	omp_set_num_threads(4);
 	
 
