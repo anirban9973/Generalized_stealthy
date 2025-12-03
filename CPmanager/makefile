@@ -9,6 +9,7 @@
 
 MACHINE = HOME
 #MACHINE = DELLA
+#MACHINE = NURION
 
 #==============================
 # DELLA
@@ -49,6 +50,28 @@ TARGET = $(EXEdir)manager.out #te.out## output file name
 #----- Flags and libraries -----
 GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas -lm -Wl,-rpath,/home/jaeukk/lib/gsl/lib
 LIBS = -lm $(GSLLIB) 
+
+#==============================
+# CLUSTER 2
+#==============================
+ifeq ($(MACHINE), NURION)
+$(info	$(MACHINE))
+#----- Directories ------------
+core = ../cores/
+
+IDIR = -I/usr/include/ -I/home/jaeukk/install/gsl/include -I$(core)# include directory
+ODIR = obj/# object directory
+#SDIR = ./# source directory
+#Idir = ./# header directory
+EXEdir = ~/EXC/# directory for executables
+
+#	Executable
+TARGET = $(EXEdir)manager.out #te.out## output file name
+
+#----- Flags and libraries -----
+GSLLIB = -L/home/jaeukk/install/gsl/lib -lgsl -lgslcblas -lm -Wl,-rpath,/home/jaeukk/lib/gsl/lib
+LIBS = -lm $(GSLLIB) 
+
 endif
 
 
