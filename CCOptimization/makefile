@@ -9,6 +9,7 @@
 
 MACHINE = HOME
 #MACHINE = DELLA
+#MACHINE = NURION
 
 #==============================
 # DELLA
@@ -56,8 +57,34 @@ EXEdir = ./# directory for executables
 TARGET = $(EXEdir)CCO.out 
 
 #----- Flags and libraries -----
-GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas
+GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas -Wl,-rpath,/home/jaeukk/lib/gsl/lib
 NLOPTLIB = -L/usr/local/lib -lnlopt
+LIBS = -lm $(GSLLIB) $(NLOPTLIB)
+PREPRO = 
+endif
+
+#==============================
+# CLUSTER 2
+#==============================
+ifeq ($(MACHINE), NURION)
+$(info	$(MACHINE))
+#----- Directories ------------
+core = ../cores/
+pair = ../PairStat/
+pot = ../Potential/
+
+IDIR = -I/usr/include/ -I$(HOME)/install/include -I/usr/local/include/ -I$(core) -I$(pair) -I$(pot) # include directory
+ODIR = ./obj/# object directory
+#SDIR = ./# source directory
+#Idir = ./# header directory
+EXEdir = ~/EXC/# directory for executables
+
+#	Executable
+TARGET = $(EXEdir)CCO.out 
+
+#----- Flags and libraries -----
+GSLLIB = -L$(HOME)/install/lib -lgsl -lgslcblas -Wl,-rpath,$(HOME)/install/lib
+NLOPTLIB = -L$(HOME)/install/lib -lnlopt
 LIBS = -lm $(GSLLIB) $(NLOPTLIB)
 PREPRO = 
 endif
@@ -67,8 +94,8 @@ endif
 #==============================
 CC = g++
 DEBUG = -g
-CFLAGS = -Wall -std=c++11 $(DEBUG) $(IDIR) -c -fopenmp #-O3
-LFLAGS = -Wall -std=c++11 $(DEBUG) $(LIBS) -fopenmp #-O3
+CFLAGS = -Wall -Wno-reorder -std=c++14 $(DEBUG) $(IDIR) -c -fopenmp -O3
+LFLAGS = -Wall -Wno-reorder -std=c++14 $(DEBUG) $(LIBS) -fopenmp -O3
 
 $(info	$(CFLAGS))
 $(info	$(LFLAGS))
@@ -76,13 +103,13 @@ $(info	$(LFLAGS))
 objs_core = RandomGenerator.o etc.o GeometryVector.o PeriodicCellList.o 
 objs_pair = StructureFactor.o PairCorrelation.o
 objs_pot = Potential.o StructureOptimization.o MD_System.o
-objs_main = main.o
+objs_main = main.o MultiStealthyPotential.o
 #objs_MC = MonteCarlo.o
 
 DEPS = $(core)GeometryVector.h $(core)RandomGenerator.h $(core)etc.h $(core)PeriodicCellList.h \
 $(pair)StructureFactor.h $(pair)PairCorrelation.h \
 $(pot)Potential.h $(pot)CollectiveCoordinatePotential.h $(pot)StructureOptimization.h $(pot)MD_System.h \
-RepulsiveCCPotential.h 
+RepulsiveCCPotential.h MultiStealthyPotential.h
 
 #  ../GenerateConfigs.h ../HardSphereFluids.h ../RandomSequentialAddition.h
 
@@ -107,7 +134,11 @@ $(info	$(SRC_main))
 
 
 
+all: | $(ODIR)
 all: $(OBJ) $(TARGET)
+
+$(ODIR):
+	mkdir -p $@
 
 # compilations...
 
@@ -141,4 +172,3 @@ clean:
 
 .PHONY: all
 all:
-

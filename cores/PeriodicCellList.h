@@ -339,8 +339,6 @@ public:
 
 		for (DimensionType i = 0; i< ::MaxDimension; i++)
 			this->ReciprocalBasisVectorValid[i] = false;
-
-		this->vol = source.PeriodicVolume();
 	}
 
 	/** \brief Construct from another list while assigning a uniform characteristic.
@@ -365,10 +363,6 @@ public:
 
 		for (DimensionType i = 0; i< ::MaxDimension; i++)
 			this->ReciprocalBasisVectorValid[i] = false;
-
-		//this->vol = -1.0;
-		this->vol = source.PeriodicVolume();
-		this->MaxRadius = source.MaxRadius;
 	}
 
 
@@ -382,23 +376,24 @@ public:
 			return false;
 		if (right.NumParticle() != this->NumParticle())
 			return false;
-		for (DimensionType d = 0; d<this->Dimension; d++)
+		for (DimensionType d = 0; d<this->Dimension; d++){
 			if (right.BasisVector[d] != this->BasisVector[d])
 				return false;
-		for (size_t i = 0; i<this->NumParticle(); i++)
+		}
+		for (size_t i = 0; i<this->NumParticle(); i++){
 			if (right.ParticleRelatives[i] != this->ParticleRelatives[i])
 				return false;
-
-			return true;
 		}
+		return true;
+	}
 
-		/** \brief Reset cached vicinity lattice data. */
-		void ClearVicinityLatticeList(void)
-		{
-			this->VicinityLattices.clear();
-			this->VicinityLatticesRc2 = 0.0;
-			this->VicinityLatticePartitions.clear();
-			this->VicinityLatticePartitions.insert(std::make_pair((double)(0.0), (size_t)(0)));
+	/** \brief Reset cached vicinity lattice data. */
+	void ClearVicinityLatticeList(void)
+	{
+		this->VicinityLattices.clear();
+		this->VicinityLatticesRc2 = 0.0;
+		this->VicinityLatticePartitions.clear();
+		this->VicinityLatticePartitions.insert(std::make_pair((double)(0.0), (size_t)(0)));
 	}
 
 
@@ -603,7 +598,6 @@ public:
 		//std::cerr<<"IterateThroughNeighbors for Rc="<<Rc<<'\n';
 
 		Rc = std::abs(Rc);
-		double Rc2 = Rc*Rc;
 		//find the true Rc, which consideres the distance from a particle to a lattice point
 		GeometryVector maxdist(this->Dimension);
 		for (DimensionType i = 0; i<this->Dimension; i++)

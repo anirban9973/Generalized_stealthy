@@ -24,7 +24,7 @@ protected:
 	const double e_critical = 4.0*(pow(2, -12/6) - pow(2, -6/6));//< LJ potential at the critical radius.
 	bool WithRepulsion = true;
 public:
-	double e0,	//< ennergy scale for LJ 
+	double e0,	//< energy scale for LJ 
 		sigma;	//< length scale for LJ
 	ShiftedCCPotential * CCPotential;
 

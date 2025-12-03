@@ -32,6 +32,7 @@
 size_t Verbosity = 3;
 
 #include "RepulsiveCCPotential.h"
+#include "MultiStealthyPotential.h"
 
 /** \brief Perform the energy optimization multiple times for a given potential energy.
 Obtain ground-state configurations from multi initial configurations.
@@ -960,6 +961,521 @@ int MC_CCO(int argc, char ** argv){
 
 // int CollectiveCoordinateMD(Configuration * pConfig, Potential * pPotential, RandomGenerator & gen, double TimeStep, double Temperature, std::string Prefix, size_t SampleNumber, size_t StepPerSample, bool AllowRestore, time_t TimeLimit, size_t EquilibrateSamples, bool MDAutoTimeStep);
 
+/**
+ * @brief CLI of multi-stealthy hyperuniform packings
+ * 
+ * @param argc 
+ * @param argv 
+ * @return int 
+ */
+int GetMultiCCO(int argc, char ** argv){
+
+	char tempstring[1000] = {};
+	std::string tempstring2;
+	std::istream & ifile = std::cin;
+	std::ostream & ofile = std::cout;
+
+	size_t timelimit_in_hour = 144;
+	size_t beg_idx = 0;
+	int seed = 0;
+	std::string vtilde = "flat";
+	if (argc > 2){
+		timelimit_in_hour = (time_t)std::atoi(argv[2]);
+		if (argc > 3){
+			seed = std::atoi(argv[3]);
+		}
+		if (argc > 4){
+			beg_idx = std::atoi(argv[4]);
+		}
+		if (argc > 5){
+			Verbosity = (size_t) (std::atoi(argv[5]));
+		}
+		if (argc > 6){
+			vtilde = std::string(argv[6]);
+		}
+	}
+	RandomGenerator rngGod(seed), rng(0);
+	ofile << "Time limit for simulations is "<< timelimit_in_hour << " hours\n";
+	ofile << "Random seed is "<< seed <<std::endl;
+	ofile << "Verbosity is "<< Verbosity <<std::endl;
+	ofile << "Shape of potential is "<< vtilde <<std::endl;
+	
+	nlopt_srand(999);
+	auto start = std::time(nullptr);
+	ProgramStart = start;
+	TimeLimit = ProgramStart + timelimit_in_hour*3600 - 5*60;//default time limit of 144 hours - 5 mins (for saving progress)
+	
+	/* 1. define sizes of a packing */
+	DimensionType dim = 2;
+	double val, L = 10, phi = 0.1, rho;
+	std::vector<double> radii;
+	std::vector<size_t> sizes;
+	size_t num_species = 1, num_radii = 1;
+	size_t N = L * L*L;
+	std::string InitCondition;
+	std::function<const SpherePacking(size_t i)> GetInitConfigs = nullptr;
+	std::string loadname, savename;
+	{
+		ofile << "Define an initial packing (random / input)\n";
+		ifile >> InitCondition;
+		if (strcmp(InitCondition.c_str(), "random") == 0){
+			/* random initial conditions */
+
+			ofile << "Dimension = "; 		ifile >> dim;
+			ofile << "Number of different radii = ";	ifile >> num_radii; 
+			radii.reserve(num_radii);
+			sizes.reserve(num_radii);
+			ofile << "Input the number of particles and the relative radius \n";
+			N = 0;
+			for (int i=0; i < num_radii; i++){
+				ofile << "number: "; ifile >> tempstring; 
+				sizes.emplace_back(atoi(tempstring));
+				N += atoi(tempstring);
+
+				ofile << "relative radius: "; ifile >> tempstring;
+				radii.emplace_back(atof(tempstring));
+			}
+			ofile << "Target packing fraction = "; 	ifile >> phi;
+			
+			/* scale particle radii */
+			ofile << "-- Particle number and radius --\n";
+			{
+
+				double curr_phi = 0;
+				for (int i=0; i < num_radii; i++){
+					curr_phi += sizes[i] * HyperSphere_Volume(dim, radii[i]);
+				}
+				curr_phi /= N;
+
+				double factor = std::pow( phi/curr_phi , 1.0/dim);
+				for (int i=0; i < num_radii; i++){
+					radii[i] *= factor;
+					ofile << sizes[i] << "\t" << radii[i] <<"\n";
+				}
+				L = pow(N, 1./dim);				
+			}		
+
+			/* a function to generate a random configuration of spheres. */
+			GetInitConfigs = [&rngGod, &dim, &sizes, &radii, L](size_t idx) ->SpherePacking {
+				SpherePacking pConfig(GetUnitCubicBox(dim, 0.1),0);
+				pConfig.Rescale(L);
+				for (size_t i = 0; i < sizes.size(); i++){					
+					for (size_t j = 0; j < sizes[i]; j++){
+						GeometryVector x;
+						RandomVector(dim, rngGod, x);
+						pConfig.Insert(radii[i], x);
+					}
+				}
+				return pConfig;
+			};
+		}
+		else if (strcmp(InitCondition.c_str(), "input") == 0){
+			ofile << "Load a txt file for a SpherePacking (include a %d symbol to identify a configuration index) ";
+			ifile >> loadname;
+
+			GetInitConfigs = [&loadname](size_t idx) -> SpherePacking{
+				char name[300];
+				std::sprintf(name, loadname.c_str(), idx);
+				SpherePacking temp; 
+				ReadConfiguration(temp, name);
+				return temp;
+			};
+
+			// ReadConfigPack c(loadname, 1.0);
+			// GetInitConfigs = c;
+			
+			// num_in_load = c.p.NumConfig();
+			// ofile << loadname <<".ConfigPack contains " << num_in_load << " realizations\n";
+			// ofile << "starts from the " << beg_idx << "-th configuration\n";
+		}
+		else{
+			ofile << tempstring << " is undefined \n";
+			return 1;
+		}
+	}
+	ofile << "Input the relative strength of contact potential =  ";	ifile >> val; 	ofile << val << std::endl;
+	
+	/* 2. Define stealthy potential */
+	ofile << "Define a stealthy potential \n";
+	MultiStealthyPotential * potential = new MultiStealthyPotential(dim, val);
+	{
+		ofile << "number of different collective potentials = ";
+		ifile >> num_species;	ofile << " (" << num_species <<" )\n";
+
+		SpherePacking c = GetInitConfigs(beg_idx);
+		N = c.NumParticle();
+		rho = N / c.PeriodicVolume();
+		potential -> SetPacking(c);
+
+		potential -> SetNumSpecies(num_species);
+		int N_curr = 0;
+		for (size_t s = 0; s < num_species; s++){
+			size_t N_s;
+			
+			ofile << "species [" << s << "]: particle number = ";
+			ifile >> N_s;
+
+			if(N_s + N_curr > N){
+				ofile << "The input is larger than the unspecified particle number. All unspecified particles are taken to be a new species.\n";
+				N_s = (N-N_curr);
+			}
+
+			for (size_t i = 0; i < N_s ; i++){
+				potential->SetSpeciesOfParticle(N_curr + i, s);
+			}
+			N_curr += N_s;
+
+			double lower, upper, S0, chi;
+			std::vector<double> param_vtilde;	// parameter used in vtilde functions
+
+			ofile << "S(0) = ";	ifile >> S0;	ofile << S0 << std::endl;
+			ofile << "How to define the constrained region? (chi / wavenumber) = ";	ifile >> tempstring;	ofile << tempstring << std::endl;
+			ofile << "lower bound = ";	ifile >> lower;	ofile << lower <<"\n";
+			ofile << "upper bound = ";	ifile >> upper;	ofile << upper <<"\n";
+
+			/* convert to the wavenumbers */
+			if (strcmp(tempstring, "chi")==0){
+				ofile << "Note that the values of chi here are normalized by the total number of particles.\n";
+				lower = getK(lower, rho, dim);
+				upper = getK(upper, rho, dim);
+			}
+
+			/* define functional form. */
+			std::function<std::vector<double> (double k)> v;
+			if (S0 == 0.0)
+			{	
+				ofile << "Stealthy:\n";
+				if (vtilde.compare("flat") == 0){
+					ofile << "vtilde function = flat (by default)\n";
+					v = [](double k) -> std::vector<double> { return std::vector<double>({1.0}); };
+				}
+				else if (vtilde.compare("overlap") == 0){
+					ofile << "vtilde function = overlap function\n";
+					param_vtilde.emplace_back(upper);
+					v = [&dim, &param_vtilde](double k) -> std::vector<double> { return std::vector<double>({alpha(dim, k/(param_vtilde[0]))}); };
+				}
+				else if (vtilde.compare("power-law") == 0){
+					double m;
+					ofile << "vtilde function = power-law function \n";
+					ofile << "exponent? = ";	ifile >> m;	
+					param_vtilde.emplace_back(upper);
+					param_vtilde.emplace_back(m);
+					v = [&param_vtilde](double k) -> std::vector<double> { return std::vector<double>({std::pow(1. - k/param_vtilde[0], param_vtilde[1])}); };
+				}
+			}
+			else{
+				ofile << "equiluminous patterns with S0 = " << S0 << "\n";
+				v = [S0](double k) -> std::vector<double> { return std::vector<double>(1.0, S0); }; 
+			}
+
+			double k1_modulus = lower*lower;
+			std::vector<GeometryVector> ks_temp = GetKs(c, upper, upper, 1);
+			for (auto k = ks_temp.begin(); k != ks_temp.end(); k++) {
+				if (k->Modulus2() > k1_modulus) {
+					potential->AddConstraint(s,*k, v(std::sqrt(k->Modulus2())));
+					chi++;
+				}					
+			}
+			chi /= dim * (N_s - 1);				
+			ofile << "chi (of a subconfig) = " << chi << std::endl;			
+		}
+	}
+		
+	size_t N_config = 300, N_load = 0, N_init = 0, N_success = 0;
+	int num_threads = 4;
+	
+	ofile << "# threads = "; ifile >> num_threads;	ofile << "\t "<< num_threads << "\n";
+	potential->ParallelNumThread = num_threads;
+	ofile << "Save as "; ifile >> savename; ofile << "\t "<< savename << "\n";
+	ofile << "target num configs = "; ifile >> N_config; ofile << "\t "<< N_config << "\n";
+
+	//ofile << std::endl;
+	//ofile << "NumParticle = "<<num<<std::endl;
+	//potential->CCPotential->ParallelNumThread = num_threads;
+	
+	{/* a piece of code to compute the stealthy (hyperuniform) packing at unit number density ... */
+		
+		char mode[100] = {};
+		ofile << "directory = "<< savename<<std::endl;
+		ofile << "mode (MD / ground) = "; ifile >> mode; ofile << std::endl;
+		
+		if (strcmp (mode, "MD") == 0)
+		{
+			/* NVT MD simulations */
+			double MDTimeStep = 0.01, MD_Temperature = -1.0;
+			size_t MDStepPerSample = 100000; 
+			size_t numEquilSamples = 500;
+			bool MDAutoTimeStep = false;
+			bool MDAllowRestore = false;
+			{
+				ConfigurationPack save_(savename);				
+				N_init = save_.NumConfig();
+			}
+
+			/* Input parameters */
+			for(;;){
+				ifile >> tempstring2;
+				std::transform(tempstring2.begin(), tempstring2.end(), tempstring2.begin(),::tolower); // make the input in the lower case
+				if (tempstring2.compare("run") == 0){
+					/* start MD simulation */
+					break;
+				}
+				else if (tempstring2.compare("timestep") == 0){
+					ofile << "\ndt = ";
+					ifile >> MDTimeStep ;
+				}
+				else if (tempstring2.compare("samplesteps") == 0){
+					ofile << "\nSample config. per \'n\' dt   ";
+					ofile << "n = ";
+					ifile >> MDStepPerSample ; 
+				}
+				else if (tempstring2.compare("temperature") == 0){
+					ofile << "\nMD temperature [in the unit of v0] = ";
+					ifile >> MD_Temperature ; 
+					ofile << MD_Temperature <<"\n\n";
+				}
+				else if (tempstring2.compare("numequilibration") == 0){
+					ofile << "\nThe number sampling steps to equilibrate samples = ?";
+					ifile >> numEquilSamples;
+				}
+				else if (tempstring2.compare("autotimestep")== 0){
+					ofile << "\nTime step will be determined automatically\n";
+					MDAutoTimeStep = true;
+				}
+				else if (tempstring2.compare("restore")== 0){
+					ofile << "\nSave and load the progress of MD simulations.\n";
+					MDAllowRestore = true;
+				}
+				else {
+					ofile << tempstring2 << " is an undefined command\n";
+				}
+			}
+
+			if (MD_Temperature < 0.0){
+				ofile << "\nTemperature is undefined;\n";
+				if (dim == 1){
+					MD_Temperature = 2e-4;
+				}
+				else if (dim == 2){
+					MD_Temperature = 2e-6;
+				}
+				else if (dim == 3){
+					MD_Temperature = 1e-6;
+				}
+				ofile << "Take T to be a default value, "<< MD_Temperature << "\n";
+			}
+			else{
+				ofile << "Input T = "<< MD_Temperature << "\n";
+			}
+			if (strcmp (tempstring, "random") == 0){
+				/* Start from a random initial condition and basic properties */
+				
+				SpherePacking pck = GetInitConfigs(0);
+				potential -> SetPacking(pck);
+				Configuration pConfig(pck, "a");
+				size_t MDEquilibrateSamples = numEquilSamples;
+				//bool MDAutoTimeStep = false;
+				CollectiveCoordinateMD(&pConfig, potential, rngGod, MDTimeStep, MD_Temperature, savename, N_config, MDStepPerSample, MDAllowRestore, TimeLimit, MDEquilibrateSamples, MDAutoTimeStep);
+			}
+			else if	(strcmp (tempstring, "input") == 0){
+				/* For continue from the latest configuration in the previous run. */
+				ofile << "MD Temperature = "<< MD_Temperature << std::endl;
+
+				SpherePacking pck = GetInitConfigs(N_load - 1);
+				potential -> SetPacking(pck);
+				Configuration pConfig(pck, "a");
+
+				//bool MDAllowRestore = true;
+				size_t MDEquilibrateSamples = numEquilSamples;
+				size_t numConfig_comp = (N_config > N_init)? N_config - N_init : 0 ;
+				
+				//bool MDAutoTimeStep = false;
+				CollectiveCoordinateMD(&pConfig, potential, rngGod, MDTimeStep, MD_Temperature, savename, numConfig_comp, MDStepPerSample, MDAllowRestore, TimeLimit, MDEquilibrateSamples, MDAutoTimeStep);
+			//TODO
+			}
+			
+			
+			
+		}
+		else if (strcmp (mode, "ground") == 0)
+		{
+			/* Quench to zero temperature */
+			/* Parameters for minimizations */
+			size_t max_steps = 10000;
+			double tolerance = 1e-14;
+			bool split_species = true;
+			std::string algorithm = "LBFGS";
+
+			ofile << "--------------------------------------- \n";
+			ofile << "\t\t Input parameters for minimizations \n";
+			ofile << "--------------------------------------- \n";
+			for(;;){
+				ifile >> tempstring2;
+				std::transform(tempstring2.begin(), tempstring2.end(), tempstring2.begin(),::tolower); // make the input in the lower case
+				if (tempstring2.compare("run") == 0){
+					/* start minimizations simulation */
+					break;
+				}
+				else if (tempstring2.compare("tolerance") == 0){
+					ofile << "\n energy tolerance for ground states [in the unit of v0] = ";
+					ifile >> tolerance ;
+				}
+				else if (tempstring2.compare("maxsteps") == 0){
+					ofile << "\n Limit number of evaluations = ";
+					ifile >> max_steps ;
+				}
+				else if (tempstring2.compare("algorithm") == 0){
+					ofile << "\nMinimization algorithm = ";
+					ifile >> algorithm ; 
+				}
+				else if (tempstring2.compare("combined") == 0){
+					ofile << "\nWrite the configurations of all species\n";
+					split_species = false;
+				}
+				else {
+					ofile << tempstring2 << " is an undefined command\n";
+				}
+			}
+			ofile << "\nNumerical optimizer is "<< algorithm <<std::endl;
+			ofile << "Energy tolerance is "<< tolerance <<std::endl;
+			ofile << "Max. steps of evaluations is "<< max_steps <<std::endl;
+
+
+			if (strcmp (InitCondition.c_str(), "random") == 0){
+				/* random initial conditions 
+					=> use MultiRun */
+
+				SpherePacking pck = GetInitConfigs(0);
+				potential -> SetPacking(pck);
+				Configuration pConfig(pck, "a");
+
+				pConfig.PrepareIterateThroughNeighbors(potential->GetRc());
+
+				{
+					ConfigurationPack save_(savename+"_Success");				
+					N_success = save_.NumConfig();
+				}
+				size_t numConfig_comp = (N_config > N_success )? N_config - N_success : 0;
+
+				ofile << "We already have " << N_success << " Configurations in the savefile \n";
+				ofile << "just compute "<< numConfig_comp <<" more Configurations \n";
+
+				ofile << "max_eval = " << max_steps << std::endl;
+				CollectiveCoordinateMultiRun(&pConfig, potential, rngGod, savename, numConfig_comp, TimeLimit, algorithm, tolerance, max_steps);
+
+				// separate configurations 
+				if (split_species){
+					std::vector<ConfigurationPack> cp;
+					for(size_t s = 0; s  < potential->species_constraints.size(); s++){
+						char name[300];
+						sprintf(name, "%s_s%d_Success", savename.c_str(), s);
+						cp.emplace_back(name);
+					}
+					ConfigurationPack success(savename+"_Success");
+
+					for (size_t i = N_success; i < success.NumConfig(); i++){
+						Configuration c = success.GetConfig(i);
+						Configuration empty_cell(c);
+						empty_cell.RemoveParticles();
+						for(size_t s = 0; s  < potential->species_constraints.size(); s++){
+							Configuration c_spec(empty_cell);
+							for (auto & id: potential->species_constraints[s].idx){
+								c_spec.Insert("a", c.GetRelativeCoordinates(id));
+							}
+							cp[s].AddConfig(c_spec);						
+						}
+					}
+				}
+				delete potential;
+
+			}
+			else if	(strcmp (InitCondition.c_str(), "input") == 0){
+				/* ReadConfigPack */
+				size_t idx_beg = 0;
+				{
+					ConfigurationPack load_(savename+"_InitConfig");				
+					N_init = load_.NumConfig();
+					ConfigurationPack success_(savename+"_InitConfig");				
+					N_success = success_.NumConfig();
+				}
+				size_t numConfig_upper = std::min(N_load, beg_idx+N_config);
+
+				ofile << "We start from the " << beg_idx << "-th Configuration from loadfile\n";  
+				ofile << "Among them, we already have used " << N_init << " Configurations  \n";
+				N_init += beg_idx;
+				ofile << "compute from the "<< N_init << "th Config. to the " << numConfig_upper <<"th Config.\n";
+				size_t id = N_init;
+				for (size_t i = N_success; i < N_config; i++){
+					if ( id < N_load ){
+						SpherePacking pck = GetInitConfigs(id);
+						Configuration pConfig(pck, "a");
+						pConfig.PrepareIterateThroughNeighbors(potential->GetRc());
+						CollectiveCoordinateMultiRun(&pConfig, potential, rngGod, savename, 1, TimeLimit, algorithm, tolerance, max_steps);
+					}
+					id ++ ;
+				}
+				delete potential;				
+			}
+
+		}
+		else{
+			ofile << "mode "<< mode << " is undefined!\n";
+			return 1;
+		}
+		// Some basic analyses
+		/*Compute the nearest distance of each config. */
+		if (false){
+			ConfigurationPack ConfigSet;
+			if (strcmp (mode, "MD") == 0){
+				ConfigSet.Open((savename ).c_str());
+			}
+			else if (strcmp (mode, "ground") == 0){
+				ConfigSet.Open((savename + "_Success").c_str());
+			}
+			double rmin = L;
+			{
+				for (int i = 0; i < ConfigSet.NumConfig(); i++) {
+					Configuration x = ConfigSet.GetConfig(i);
+					double rm = L;
+					for (size_t j = 0; j < x.NumParticle(); j++) {
+						double temp = x.NearestParticleDistance(j);
+						rm = (temp < rm) ? temp : rm;
+					}
+					ofile << i << ":\t" << rm << std::endl;
+				}
+			}
+
+			auto getC = [&rmin, &ConfigSet](size_t i) ->Configuration {
+				Configuration c = ConfigSet.GetConfig(i);
+				double R = rmin;
+				for (size_t j = 0; j < c.NumParticle(); j++) {
+					double temp = c.NearestParticleDistance(j);
+					R = (temp < R) ? temp : R;
+				}
+				rmin = (R < rmin) ? R : rmin;
+				return c;
+			};
+
+			/*Compute g2 function*/
+			std::vector<GeometryVector> g2;
+			N_config = ConfigSet.NumConfig();
+			IsotropicTwoPairCorrelation(getC, N_config, std::min(0.2 * L, 5.0) , g2);
+			WriteFunction(g2, (savename + "_g2").c_str());
+			phi = 1.0*HyperSphere_Volume(dim, rmin / 2.0);
+			ofile << "max packing fraction is " << phi << std::endl;
+
+			/*Compute the structure factsor*/
+			std::vector<GeometryVector> Sk;
+			IsotropicStructureFactor(getC, N_config, 0.2, 1, Sk);
+			WriteFunction(Sk, (savename + "_Sk").c_str());
+		}		
+	}
+
+
+
+	return 0;
+}
+
 
 
 int main(int argc, char ** argv){
@@ -968,6 +1484,11 @@ int main(int argc, char ** argv){
 	std::istream & ifile = std::cin;
 	std::ostream & ofile = std::cout;
 	RandomGenerator rngGod(0), rng(0);
+
+	if (argc > 1 && strcmp(argv[1], "multi") == 0){
+		GetMultiCCO(argc, argv);
+	}
+	else
 	{
 		GetCCO(argc, argv);
 	}
