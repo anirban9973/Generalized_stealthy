@@ -62,6 +62,7 @@ endif
 #==============================
 ifeq ($(MACHINE), NURION)
 #echo $(MACHINE)
+core = ../cores/
 $(info	$(MACHINE))
 #----- Directories ------------
 IDIR = -I/usr/include/ -I$(HOME)/install/include -I/usr/local/include/ -I$(core) # include directory
