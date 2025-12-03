@@ -50,6 +50,7 @@ TARGET = $(EXEdir)manager.out #te.out## output file name
 #----- Flags and libraries -----
 GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas -lm -Wl,-rpath,/home/jaeukk/lib/gsl/lib
 LIBS = -lm $(GSLLIB) 
+endif
 
 #==============================
 # CLUSTER 2
