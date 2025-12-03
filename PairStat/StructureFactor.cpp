@@ -106,17 +106,17 @@ void IsotropicStructureFactor(std::function<const Configuration(size_t i)> GetCo
 
 			if(SameBasis==false){
 				ks=GetKs(CurrentConfig, CircularKMax, LinearKMax, SampleProbability, true, CircularKMin);
-				k_amp.resize(ks.size(), GeometryVector(static_cast<double>(CurrentConfig.GetDimension())));
+				k_amp.resize(ks.size(), 0.0);
 				for (size_t i = 0; i < ks.size(); i++){
-					k_amp[i] = np.sqrt(ks[i].Modulus2());
+					k_amp[i] = std::sqrt(ks[i].Modulus2());
 				}
 			}
 		}
 		else{
 			ks = GetKs(CurrentConfig, CircularKMax, LinearKMax, SampleProbability, false, CircularKMin);
-			k_amp.resize(ks.size(), GeometryVector(static_cast<double>(CurrentConfig.GetDimension())));
+			k_amp.resize(ks.size(), 0.0);
 			for (size_t i = 0; i < ks.size(); i++){
-				k_amp[i] = np.sqrt(ks[i].Modulus2());
+				k_amp[i] = std::sqrt(ks[i].Modulus2());
 			}
 			d = CurrentConfig.GetDimension();
 			V = CurrentConfig.PeriodicVolume();
