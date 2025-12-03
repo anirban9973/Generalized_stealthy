@@ -60,7 +60,7 @@ $(info	$(MACHINE))
 #----- Directories ------------
 core = ../cores/
 
-IDIR = -I/usr/include/ -I/home/jaeukk/install/gsl/include -I$(core)# include directory
+IDIR = -I/usr/include/ -I$(HOME)/install/include -I$(core) # include directory
 ODIR = obj/# object directory
 #SDIR = ./# source directory
 #Idir = ./# header directory
@@ -70,7 +70,7 @@ EXEdir = ~/EXC/# directory for executables
 TARGET = $(EXEdir)manager.out #te.out## output file name
 
 #----- Flags and libraries -----
-GSLLIB = -L/home/jaeukk/install/gsl/lib -lgsl -lgslcblas -lm -Wl,-rpath,/home/jaeukk/lib/gsl/lib
+GSLLIB = -L$(HOME)/install/lib -lgsl -lgslcblas -lm -Wl,-rpath,$(HOME)/install/lib
 LIBS = -lm $(GSLLIB) 
 
 endif
@@ -112,7 +112,11 @@ SRC_netw = $(patsubst %.o, %.cpp, $(objs_netw))
 $(info  $(SRC_core))
 $(info  $(SRC_netw))
 
+all: | $(ODIR)
 all: $(OBJ) $(TARGET)
+
+$(ODIR):
+	mkdir -p $@
 
 $(TARGET): $(OBJ)
 	$(CC) -o $@ $(OBJ) $(LFLAGS)

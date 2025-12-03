@@ -9,6 +9,7 @@
 
 MACHINE = HOME
 #MACHINE = DELLA
+#MACHINE = NURION
 core = /home/jaeukk/new_codes/c++/cores/
 #==============================
 # DELLA
@@ -57,6 +58,29 @@ PREPRO =
 endif
 
 #==============================
+# CLUSTER 2
+#==============================
+ifeq ($(MACHINE), NURION)
+#echo $(MACHINE)
+$(info	$(MACHINE))
+#----- Directories ------------
+IDIR = -I/usr/include/ -I$(HOME)/install/include -I/usr/local/include/ -I$(core) # include directory
+ODIR = obj/# object directory
+#SDIR = ./# source directory
+#Idir = ./# header directory
+EXEdir = ~/EXC/# directory for executables
+
+#	Executable
+TARGET = $(EXEdir)PairStat.out
+
+#----- Flags and libraries -----
+GSLLIB = -L$(HOME)/install/lib -lgsl -lgslcblas -Wl,-rpath,$(HOME)/install/lib
+NLOPTLIB = -L$(HOME)/install/lib -lnlopt
+LIBS = -lm $(GSLLIB) $(NLOPTLIB)
+PREPRO = 
+endif
+
+#==============================
 #	Common flages
 #==============================
 CC = g++
@@ -91,8 +115,11 @@ $(info	$(SRC_main))
 #$(info	$(SRC_pot))
 
 
-
+all: | $(ODIR)
 all: $(OBJ) $(TARGET)
+
+$(ODIR):
+	mkdir -p $@
 
 # compilations...
 $(OBJ_core): $(ODIR)%.o: $(addprefix $(core), %.cpp) $(DEPS)
@@ -123,4 +150,3 @@ clean:
 
 .PHONY: all
 all:
-
