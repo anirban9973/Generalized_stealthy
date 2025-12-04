@@ -956,7 +956,7 @@ int MC_CCO(int argc, char ** argv){
 
 	delete pCCPot;
 
-
+	return 0;
 }
 
 // int CollectiveCoordinateMD(Configuration * pConfig, Potential * pPotential, RandomGenerator & gen, double TimeStep, double Temperature, std::string Prefix, size_t SampleNumber, size_t StepPerSample, bool AllowRestore, time_t TimeLimit, size_t EquilibrateSamples, bool MDAutoTimeStep);
@@ -1122,6 +1122,7 @@ int GetMultiCCO(int argc, char ** argv){
 
 			for (size_t i = 0; i < N_s ; i++){
 				potential->SetSpeciesOfParticle(N_curr + i, s);
+				ofile << N_curr + i <<"\n";
 			}
 			N_curr += N_s;
 

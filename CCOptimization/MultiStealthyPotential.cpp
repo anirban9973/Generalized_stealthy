@@ -22,16 +22,30 @@ void MultiStealthyPotential::SetSpeciesOfParticle(size_t prt_idx, size_t species
 
 	if(this->idx2species[prt_idx].species!= species){
 		/* species is replaced! */
-		if (this->idx2species[prt_idx].species > -1){ // the species of a particle was designated previously.
+		if (this->idx2species[prt_idx].species >= 0){ // the species of a particle was designated previously.
 			std::cout << "change species of particle " << prt_idx << " from " << this->idx2species[prt_idx].species << " to " << species << "\n";
+			this->species_constraints[this->idx2species[prt_idx].species].idx.erase(
+				std::remove(
+					this->species_constraints[this->idx2species[prt_idx].species].idx.begin(), 
+					this->species_constraints[this->idx2species[prt_idx].species].idx.end(), 
+					prt_idx
+				), 
+				this->species_constraints[this->idx2species[prt_idx].species].idx.end()); // remove the previously defined species of particle `prt_idx`.
 		}
-	    this->species_constraints[this->idx2species[prt_idx].species].idx.erase(
-			std::remove(
-				this->species_constraints[this->idx2species[prt_idx].species].idx.begin(), 
-				this->species_constraints[this->idx2species[prt_idx].species].idx.end(), 
-				prt_idx
-			), 
-			this->species_constraints[this->idx2species[prt_idx].species].idx.end()); // remove the previously defined species of particle `prt_idx`.
+		else {
+			/* species were not specified so far. */
+			std::cout << "species of particle " << prt_idx << " is initialized to " << species << "\n";
+			// this->
+
+
+			// this->species_constraints[this->idx2species[prt_idx].species].idx.erase(
+			// 	std::remove(
+			// 		this->species_constraints[this->idx2species[prt_idx].species].idx.begin(), 
+			// 		this->species_constraints[this->idx2species[prt_idx].species].idx.end(), 
+			// 		prt_idx
+			// 	), 
+			// 	this->species_constraints[this->idx2species[prt_idx].species].idx.end()); // remove the previously defined species of particle `prt_idx`.
+		}
 	}
 	this->idx2species[prt_idx].species = species;
 	this->idx2species[prt_idx].index = this->species_constraints[species].idx.size()-1;

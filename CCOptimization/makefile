@@ -84,8 +84,8 @@ TARGET = $(EXEdir)CCO.out
 
 #----- Flags and libraries -----
 GSLLIB = -L$(HOME)/install/lib -lgsl -lgslcblas -Wl,-rpath,$(HOME)/install/lib
-NLOPTLIB = -L$(HOME)/install/lib -lnlopt
-LIBS = -lm $(GSLLIB) $(NLOPTLIB)
+NLOPTLIB = -L$(HOME)/install/lib64 -lnlopt -Wl,-rpath,$(HOME)/install/lib64
+LIBS = -lm $(GSLLIB) $(NLOPTLIB) 
 PREPRO = 
 endif
 
