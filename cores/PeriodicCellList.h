@@ -325,7 +325,7 @@ public:
 		Cells(source.Cells), ApproximateCellSize(source.ApproximateCellSize),
 		SortedVicinityList(source.SortedVicinityList), VicinityLatticesRc2(0.0),
 		ParticleCartesians(source.ParticleCartesians), ParticleRelatives(source.ParticleRelatives),
-		ParticleCharacteristics(source.ParticleCharacteristics)
+		ParticleCharacteristics(source.ParticleCharacteristics), vol(source.vol)
 	{
 		for (DimensionType i = 0; i< ::MaxDimension; i++)
 		{
@@ -349,7 +349,7 @@ public:
 		Cells(source.Cells), ApproximateCellSize(source.ApproximateCellSize),
 		SortedVicinityList(source.SortedVicinityList), VicinityLatticesRc2(0.0),
 		ParticleCartesians(source.ParticleCartesians), ParticleRelatives(source.ParticleRelatives),
-		ParticleCharacteristics(source.NumParticle(), cha)
+		ParticleCharacteristics(source.NumParticle(), cha), vol(source.vol)
 	{
 		for (DimensionType i = 0; i< ::MaxDimension; i++)
 		{

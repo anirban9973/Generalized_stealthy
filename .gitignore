@@ -27,3 +27,7 @@ PairStat/test/Z_test.sh
 weighted/log*
 weighted/*.out
 weighted/*.sh
+CCOptimization/multi_test.dat
+CCOptimization/sk.sh
+CCOptimization/conf2pack.sh
+CCOptimization/*ConfigPack*

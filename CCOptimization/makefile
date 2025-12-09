@@ -21,14 +21,14 @@ core = ../cores/
 pair = ../PairStat/
 pot = ../Potential/
 
-IDIR = -I/usr/local/include/ -I/usr/include/ -I$(core) -I$(pair) -I$(pot) #-I/home/jaeukk/install/include # include directory
+IDIR = -I/$(HOME)/install/include -I$(core) -I$(pair) -I$(pot) #-I/home/jaeukk/install/include # include directory
 ODIR = ./obj/# object directory
 #SDIR = ./# source directory
 #Idir = ./# header directory
-EXEdir = ~/# directory for executables
+EXEdir = ~/EXC/# directory for executables
 
 #	Executable
-TARGET = $(EXEdir)soft_core_stealthy.out
+TARGET = $(EXEdir)CCO.out
 
 #----- Flags and libraries -----
 GSLLIB = -L/usr/lib64 -lgsl -lgslcblas
@@ -47,7 +47,7 @@ core = ../cores/
 pair = ../PairStat/
 pot = ../Potential/
 
-IDIR = -I/usr/include/ -I/home/jaeukk/lib/gsl/include -I/usr/local/include/ -I$(core) -I$(pair) -I$(pot) # include directory
+IDIR = -I$(HOME)/install/include/ -I$(core) -I$(pair) -I$(pot) # include directory
 ODIR = ./obj/# object directory
 #SDIR = ./# source directory
 #Idir = ./# header directory
@@ -57,8 +57,8 @@ EXEdir = ./# directory for executables
 TARGET = $(EXEdir)CCO.out 
 
 #----- Flags and libraries -----
-GSLLIB = -L/home/jaeukk/lib/gsl/lib -lgsl -lgslcblas -Wl,-rpath,/home/jaeukk/lib/gsl/lib
-NLOPTLIB = -L/usr/local/lib -lnlopt
+GSLLIB = -L/$(HOME)/install/lib -lgsl -lgslcblas -Wl,-rpath,/$(HOME)/install/lib
+NLOPTLIB = -L/$(HOME)/install/lib -lnlopt
 LIBS = -lm $(GSLLIB) $(NLOPTLIB)
 PREPRO = 
 endif

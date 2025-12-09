@@ -167,7 +167,7 @@ public :
 		for (size_t i = 0; i < num ; i++){
 			species_constraints.emplace_back(this->Dimension);
 		}
-		std::cout << "species = "<< species_constraints.size() <<"\n\n";
+		//std::cout << "species = "<< species_constraints.size() <<"\n\n";
 	}
 
 	/// @brief Determine the species of a particle

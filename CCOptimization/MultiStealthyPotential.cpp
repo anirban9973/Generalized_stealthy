@@ -23,7 +23,7 @@ void MultiStealthyPotential::SetSpeciesOfParticle(size_t prt_idx, size_t species
 	if(this->idx2species[prt_idx].species!= species){
 		/* species is replaced! */
 		if (this->idx2species[prt_idx].species >= 0){ // the species of a particle was designated previously.
-			std::cout << "change species of particle " << prt_idx << " from " << this->idx2species[prt_idx].species << " to " << species << "\n";
+			//std::cout << "change species of particle " << prt_idx << " from " << this->idx2species[prt_idx].species << " to " << species << "\n";
 			this->species_constraints[this->idx2species[prt_idx].species].idx.erase(
 				std::remove(
 					this->species_constraints[this->idx2species[prt_idx].species].idx.begin(), 

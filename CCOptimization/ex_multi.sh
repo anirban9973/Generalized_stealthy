@@ -34,7 +34,7 @@ upper2=0.15
 threads=4
 savename=${dimension}D_bidisperse_${upper1}_${N1}_${N2}
 
-Nc=1000 		# target number of configurations
+Nc=10 		# target number of configurations
 mode=ground
 tol="tolerance 1e-18"
 step="maxsteps 10000"
@@ -42,6 +42,26 @@ step="maxsteps 10000"
 EXC=./CCO.out
 
 # random initial condition
+echo "$EXC multi $timelimit $seed $beg_idx $Verbosity $pot_shape <<< \"$init 
+$dimension 
+$num_radii
+$N1	$r1
+$N2 $r2
+$phi
+$val
+$num_species
+$N1 $S0_1 $type1 $lower1 $upper1 
+$N2 $S0_2 $type2 $lower2 $upper2 
+$threads
+$savename
+$Nc
+$mode 
+$tol
+$step
+run
+\""
+
+
 $EXC multi $timelimit $seed $beg_idx $Verbosity $pot_shape <<< "$init 
 $dimension 
 $num_radii
