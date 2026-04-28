@@ -31,8 +31,8 @@ d=2                            # space dimension
 # S(k) = 0 for k in union of [K1^(n), K1^(n) + delta^(n)], n = 1..M.
 # To use a single standard stealthy shell: set M=1, K1s=(0.0), deltas=(your_delta).
 M=2                            # number of stealthy shells
-K1s=(0.0  0.5)                 # lower bounds k1^(n) for each shell (unit number density)
-deltas=(0.3  0.2)              # widths delta^(n) for each shell (unit number density)
+K1s=(0.0  3.2354553131)                 # lower bounds k1^(n) for each shell (unit number density)
+deltas=(2.2419964866  2.2419964866)              # widths delta^(n) for each shell (unit number density)
 
 S0=0.                          # S0 > 0: equiluminous. S0 = 0.0: stealthy
 vareps0=0.0                    # relative strength of soft-core repulsion. (0 means no soft-core repulsion.)
@@ -43,8 +43,8 @@ sigma=0.20                     # exclusion radius of soft-core repulsion (unit n
 # 3. Computational parameters
 # --------------------------------
 timelimit=4                    # simulation time limit in hours; should match #SBATCH --time
-N=1000                          # number of particles
-Nc=1                          # number of configurations to collect
+N=4000                          # number of particles
+Nc=20                         # number of configurations to collect
 
 # --------------------------------
 # 4. MD simulation parameters
