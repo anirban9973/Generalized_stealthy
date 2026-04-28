@@ -1691,7 +1691,7 @@ int CollectiveCoordinateMD(Configuration * pConfig, Potential * pPotential, Rand
 	{
 		BeforeRelaxPack.Clear();
 		/* equilibration starts from a ground state */
-		RelaxStructure_NLOPT(*pConfig, *pPotential, 0.0, 0, 0.0, 1000);
+		RelaxStructure_NLOPT(*pConfig, *pPotential, 0.0, 0, 0.0, 100000);
 		pPot->SetConfiguration(* pConfig);
 		double E=pPot->Energy();
 
