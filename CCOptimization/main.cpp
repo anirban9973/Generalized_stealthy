@@ -33,6 +33,7 @@ size_t Verbosity = 3;
 
 #include "RepulsiveCCPotential.h"
 #include "MultiStealthyPotential.h"
+#include "BiasedCCPotential.h"
 
 /** \brief Perform the energy optimization multiple times for a given potential energy.
 Obtain ground-state configurations from multi initial configurations.
@@ -477,7 +478,7 @@ int GetCCO(int argc, char ** argv){
 				}
 				size_t numConfig_upper = std::min(num_in_load, beg_idx+numConfig);
 
-				ofile << "We start from the " << beg_idx << "-th Configuration from loadfile\n";  
+				ofile << "We start from the " << beg_idx << "-th Configuration from loadfile\n";
 				ofile << "Among them, we already have used " << num_in_Init << " Configurations  \n";
 				num_in_Init += beg_idx;
 				ofile << "compute from the "<< num_in_Init << "th Config. to the " << numConfig_upper <<"th Config.\n";
@@ -490,9 +491,153 @@ int GetCCO(int argc, char ** argv){
 					}
 					id ++ ;
 				}
-				delete potential;				
+				delete potential;
 			}
 
+		}
+		else if (strcmp(mode, "hole") == 0)
+		{
+			/* -------------------------------------------------------
+			 * feasibility_scan: find the maximum void radius R_c at
+			 * the box centre compatible with the stealthy constraint.
+			 *
+			 * For each probe radius R_f in [R_min, R_max] (step dR):
+			 *   try N_trial independent LBFGS minimisations of the
+			 *   biased potential Phi_CC + phi_ex.
+			 *   If any reaches E < tol  => hole of radius R_f is
+			 *   feasible; record R_c = R_f and continue.
+			 *   First R_f where all N_trial fail => break.
+			 *
+			 * Output (stdout + savename_hole.dat):
+			 *   R_c          (absolute)
+			 *   R_c * k_max  (dimensionless, k_max = outer edge of outermost shell)
+			 * Config output: savename_hole_Success.ConfigPack
+			 * ------------------------------------------------------- */
+
+			double R_min     = 0.0;
+			double R_max     = 1.0;
+			double dR        = 0.01;
+			size_t N_trial   = 100;
+			double tol       = 1e-10;
+			size_t max_steps = 100000;
+
+			ofile << "--------------------------------------- \n";
+			ofile << "\t\t Input parameters for hole scan \n";
+			ofile << "--------------------------------------- \n";
+			for(;;){
+				ifile >> tempstring2;
+				std::transform(tempstring2.begin(), tempstring2.end(),
+				               tempstring2.begin(), ::tolower);
+				if (tempstring2.compare("run") == 0) break;
+				else if (tempstring2.compare("rmin") == 0){
+					ofile << "\nR_min = "; ifile >> R_min;
+				}
+				else if (tempstring2.compare("rmax") == 0){
+					ofile << "\nR_max = "; ifile >> R_max;
+				}
+				else if (tempstring2.compare("dr") == 0){
+					ofile << "\ndR = "; ifile >> dR;
+				}
+				else if (tempstring2.compare("ntrial") == 0){
+					ofile << "\nN_trial = "; ifile >> N_trial;
+				}
+				else if (tempstring2.compare("tolerance") == 0){
+					ofile << "\ntol = "; ifile >> tol;
+				}
+				else if (tempstring2.compare("maxsteps") == 0){
+					ofile << "\nmax_steps = "; ifile >> max_steps;
+				}
+				else {
+					ofile << tempstring2 << " is an undefined command\n";
+				}
+			}
+			ofile << "\nR_min     = " << R_min     << "\n";
+			ofile << "R_max     = " << R_max     << "\n";
+			ofile << "dR        = " << dR        << "\n";
+			ofile << "N_trial   = " << N_trial   << "\n";
+			ofile << "tol       = " << tol       << "\n";
+			ofile << "max_steps = " << max_steps << "\n";
+
+			// Wrap the already-constructed CC potential with the exclusion field
+			BiasedCCPotential biased(potential, R_min, dim);
+			biased.ParallelNumThread = num_threads;
+
+			// Template config (sets box geometry and particle count)
+			Configuration tmpl = GetInitConfigs(0);
+			tmpl.PrepareIterateThroughNeighbors(sigma);
+
+			ConfigurationPack successPack(savename + "_hole_Success");
+
+			double R_c = R_min - dR;
+			Configuration best_config(tmpl);
+			bool ever_found = false;
+
+			for (double R_f = R_min; R_f <= R_max + 0.5*dR; R_f += dR)
+			{
+				biased.set_R_f(R_f);
+				bool found = false;
+
+				for (size_t trial = 0; trial < N_trial; trial++)
+				{
+					// Random initial configuration
+					Configuration cfg(tmpl);
+					for (size_t n = 0; n < cfg.NumParticle(); n++)
+					{
+						GeometryVector rel(dim);
+						for (DimensionType j = 0; j < dim; j++)
+							rel.x[j] = rngGod.RandomDouble();
+						cfg.MoveParticle(n, rel);
+					}
+
+					// Ensure no particle starts inside R_f (would cause divergence)
+					PushParticlesOutside(cfg, R_f, rngGod);
+
+					RelaxStructure_NLOPT(cfg, biased, 0.0, 0, 0.0, max_steps);
+
+					biased.SetConfiguration(cfg);
+					double E = biased.Energy();
+
+					ofile << "R_f=" << R_f << " trial=" << trial << " E=" << E << "\n";
+
+					if (E < tol)
+					{
+						found       = true;
+						R_c         = R_f;
+						best_config = cfg;
+						ever_found  = true;
+						break;
+					}
+
+					if (std::time(nullptr) > TimeLimit) goto hole_done;
+				}
+
+				if (!found) break;   // first failure: R_f is infeasible, scan stops
+			}
+
+			hole_done:
+			ofile << "\n==============================\n";
+			if (ever_found)
+			{
+				ofile << "R_c          = " << R_c          << "\n";
+				ofile << "R_c * k_max  = " << R_c * k2_max << "  (dimensionless)\n";
+				successPack.AddConfig(best_config);
+
+				std::string datname = savename + "_hole.dat";
+				std::ofstream datfile(datname);
+				datfile.precision(15);
+				datfile << R_c << "\t" << R_c * k2_max << "\n";
+				datfile.close();
+				ofile << "Saved R_c to " << datname << "\n";
+				ofile << "Saved config to " << savename << "_hole_Success\n";
+			}
+			else
+			{
+				ofile << "No feasible hole found in ["
+				      << R_min << ", " << R_max << "]\n";
+			}
+			ofile << "==============================\n";
+
+			delete potential;
 		}
 		else{
 			ofile << "mode "<< mode << " is undefined!\n";

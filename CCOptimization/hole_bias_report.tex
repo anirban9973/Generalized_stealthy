@@ -1,0 +1,176 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{parskip}
+\usepackage{hyperref}
+\geometry{margin=1.1in}
+
+\title{Biased Collective-Coordinate Potential\\for Hole-Size Measurement}
+\author{CCO-projects --- \texttt{biased\_optimization} branch}
+\date{}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\bigskip
+
+% ------------------------------------------------------------------
+\section{Original collective-coordinate potential}
+% ------------------------------------------------------------------
+
+The standard stealthy collective-coordinate (CC) potential is
+\begin{equation}
+    \Phi_{\mathrm{CC}}(\{\mathbf{r}_i\})
+    = \frac{1}{V}
+      \sum_{\mathbf{k}\in\mathcal{K}}
+      \tilde{v}(\mathbf{k})\,|\rho(\mathbf{k})|^{2},
+    \label{eq:cc}
+\end{equation}
+where
+\begin{align}
+    \rho(\mathbf{k}) &= \sum_{j=1}^{N} e^{i\mathbf{k}\cdot\mathbf{r}_j}
+    \quad\text{(structure-factor amplitude)},\\[4pt]
+    \mathcal{K} &= \bigcup_{n=1}^{M}
+        \bigl\{\mathbf{k} : k_1^{(n)} < |\mathbf{k}| \le k_1^{(n)}+\delta^{(n)}\bigr\}
+    \quad\text{(excluded $k$-space region)},
+\end{align}
+$V$ is the simulation-box volume, and $\tilde{v}(\mathbf{k})=1$ for the
+flat (default) stealthy weight.
+Minimising $\Phi_{\mathrm{CC}}$ to zero enforces $S(\mathbf{k})=0$ for
+all $\mathbf{k}\in\mathcal{K}$, the defining condition of stealthy
+hyperuniformity.
+
+% ------------------------------------------------------------------
+\section{Goal: maximum hole radius at the box centre}
+% ------------------------------------------------------------------
+
+We wish to measure the maximum radius $R_c$ of a spherical void that can
+be placed at the box centre
+\begin{equation}
+    \mathbf{r}_c = \tfrac{1}{2}(\mathbf{a}_1 + \mathbf{a}_2 + \cdots + \mathbf{a}_d),
+\end{equation}
+where $\mathbf{a}_i$ are the lattice vectors, while the configuration
+simultaneously satisfies the stealthy constraint
+$\Phi_{\mathrm{CC}}\approx 0$.
+
+% ------------------------------------------------------------------
+\section{Exclusion field added to the potential}
+% ------------------------------------------------------------------
+
+To enforce a void of probe radius $R_f$ around $\mathbf{r}_c$, we add a
+radial exclusion field that diverges as any particle approaches the
+centre:
+\begin{equation}
+    \phi_{\mathrm{ex}}(\{\mathbf{r}_i\};\,R_f)
+    = \sum_{\substack{i=1\\r_{ic}<R_f}}^{N}
+      \left(\frac{R_f}{r_{ic}} - 1\right),
+    \qquad
+    r_{ic} = |\mathbf{r}_i - \mathbf{r}_c|.
+    \label{eq:phiex}
+\end{equation}
+Key properties of $\phi_{\mathrm{ex}}$:
+\begin{itemize}
+    \item It is \emph{zero} at $r_{ic}=R_f$ (particle on the boundary).
+    \item It \emph{diverges} as $r_{ic}\to 0$ (particle at the centre).
+    \item It is \emph{non-negative} for all $r_{ic}>0$.
+    \item Only particles strictly inside the probe sphere ($r_{ic}<R_f$)
+          contribute.
+\end{itemize}
+
+% ------------------------------------------------------------------
+\section{Biased potential}
+% ------------------------------------------------------------------
+
+The full biased potential used during minimisation is
+\begin{equation}
+    \boxed{
+    \Phi_{\mathrm{biased}}(\{\mathbf{r}_i\};\,R_f)
+    = \underbrace{\frac{1}{V}
+      \sum_{\mathbf{k}\in\mathcal{K}}
+      \tilde{v}(\mathbf{k})\,|\rho(\mathbf{k})|^{2}}_{\Phi_{\mathrm{CC}}}
+    +
+    \underbrace{\sum_{\substack{i\\r_{ic}<R_f}}
+      \!\!\left(\frac{R_f}{r_{ic}}-1\right)}_{\phi_{\mathrm{ex}}}.
+    }
+    \label{eq:biased}
+\end{equation}
+When $\Phi_{\mathrm{biased}}$ is minimised to a value below a threshold
+$\varepsilon_{\mathrm{tol}}$, both conditions are jointly satisfied:
+\begin{enumerate}
+    \item The stealthy constraint $S(\mathbf{k})\approx 0$ holds for all
+          $\mathbf{k}\in\mathcal{K}$ (from $\Phi_{\mathrm{CC}}\approx 0$).
+    \item All particles lie outside the sphere of radius $R_f$ centred at
+          $\mathbf{r}_c$ (from $\phi_{\mathrm{ex}}\approx 0$, which
+          requires $r_{ic}\ge R_f$ for every particle).
+\end{enumerate}
+
+% ------------------------------------------------------------------
+\section{Force from the exclusion field}
+% ------------------------------------------------------------------
+
+The force on particle $i$ from the exclusion field is
+\begin{equation}
+    \mathbf{F}_i^{\mathrm{ex}}
+    = -\nabla_{\mathbf{r}_i}\,\phi_{\mathrm{ex}}
+    = \begin{cases}
+        \displaystyle
+        \frac{R_f}{r_{ic}^{3}}\,(\mathbf{r}_i - \mathbf{r}_c)
+        & \text{if } r_{ic} < R_f,\\[8pt]
+        \mathbf{0} & \text{otherwise.}
+      \end{cases}
+    \label{eq:force}
+\end{equation}
+This force points \emph{radially outward} from $\mathbf{r}_c$ and grows
+without bound as $r_{ic}\to 0$, acting as a hard barrier that prevents
+any particle from entering the probe sphere.
+
+The total force on particle $i$ during minimisation is
+\begin{equation}
+    \mathbf{F}_i
+    = \mathbf{F}_i^{\mathrm{CC}} + \mathbf{F}_i^{\mathrm{ex}},
+\end{equation}
+where $\mathbf{F}_i^{\mathrm{CC}} = -\nabla_{\mathbf{r}_i}\Phi_{\mathrm{CC}}$
+is the standard stealthy force already present in the codebase.
+
+% ------------------------------------------------------------------
+\section{Feasibility scan and maximum hole radius}
+% ------------------------------------------------------------------
+
+The probe radius $R_f$ is treated as a fixed external parameter that is
+stepped upward from $R_{\min}$ to $R_{\max}$ in increments $\Delta R$:
+\begin{equation}
+    R_f \;\in\; \{R_{\min},\; R_{\min}+\Delta R,\; R_{\min}+2\Delta R,\;\ldots\}.
+\end{equation}
+At each value of $R_f$:
+\begin{enumerate}
+    \item $N_{\mathrm{trial}}$ independent random initial configurations
+          are generated and minimised under $\Phi_{\mathrm{biased}}$.
+    \item If \emph{any} minimisation reaches
+          $\Phi_{\mathrm{biased}} < \varepsilon_{\mathrm{tol}}$,
+          the void of radius $R_f$ is \textbf{feasible}: record
+          $R_c = R_f$ and advance to the next step.
+    \item If \emph{all} $N_{\mathrm{trial}}$ attempts fail, the void is
+          \textbf{infeasible}: stop the scan.
+\end{enumerate}
+The output is the maximum feasible hole radius $R_c$ and the
+corresponding stealthy configuration.
+
+% ------------------------------------------------------------------
+\section{Dimensionless output}
+% ------------------------------------------------------------------
+
+Results are reported in two units:
+\begin{itemize}
+    \item $R_c$ in absolute (simulation) length units.
+    \item $R_c \cdot k_{\max}$ (dimensionless), where
+          $k_{\max}$ is the outer edge of the outermost excluded shell:
+          \begin{equation}
+              k_{\max} = \max_{n}\bigl(k_1^{(n)} + \delta^{(n)}\bigr).
+          \end{equation}
+\end{itemize}
+Running the scan across many independent seeds (SLURM array jobs, each
+with a different random initial condition) samples the distribution of
+$R_c$ over the stealthy ground-state ensemble, giving the hole-size
+distribution $p(R_c)$.
+
+\end{document}
