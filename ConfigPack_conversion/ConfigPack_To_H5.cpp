@@ -74,12 +74,9 @@ int main()
     }
 
     // ----------------------------------------------------------------
-    // Create output directory and HDF5 file
+    // Create HDF5 file in the current working directory
     // ----------------------------------------------------------------
-    fs::path outdir = "../h5";
-    if (!fs::exists(outdir)) fs::create_directories(outdir);
-
-    fs::path h5path = outdir / "configs.h5";
+    fs::path h5path = "configs.h5";
     H5::H5File h5file(h5path.string(), H5F_ACC_TRUNC);
 
     // Write global attributes
