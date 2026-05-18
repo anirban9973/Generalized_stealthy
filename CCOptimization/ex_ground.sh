@@ -26,6 +26,7 @@ S0s=(0.0  0.0)                 # S0 per shell: 0.0 = stealthy, >0 = equiluminous
 vareps0=0.0			# relative strength of the soft-core repulsion. (0 means no soft-core repulsions.)
 phi_fake=0.15                      # (Do not touch) fictitious packing fraction; the particle radius is computed from this value in the unit number density
 sigma=0.20                     # Exclusion radius of the soft-core repulsion in unit number density; this value must be larger than the particle diameter
+angle=90.0                     # Box angle in degrees (2D only): 90=square, 60=hexagonal; ignored for d!=2
 
 # --------------------------------
 # 3. Computational parameters
@@ -69,7 +70,7 @@ exe=./CCO.out
 echo "# Run the following command:"
 
 # ground states from Random Initial Conditions
-${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $vareps0 ${sigma} ${phi_fake} \
+${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $vareps0 ${sigma} ${phi_fake} ${angle} \
 ${threads} ${N} ${Nc} random ${fname}_GS \
 ground $eps0 $max_eval $algorithm run"
 

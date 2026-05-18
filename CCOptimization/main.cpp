@@ -162,7 +162,7 @@ int GetCCO(int argc, char ** argv){
 	TimeLimit = ProgramStart + timelimit_in_hour*3600 - 5*60;//default time limit of 144 hours - 5 mins (for saving progress)
 	
 	{/* a piece of code to compute the stealthy (hyperuniform) packing at unit number density ... */
-		double val, chi = 0, L = 10, sigma, phi = 0.1;
+		double val, chi = 0, L = 10, sigma, phi = 0.1, angle_deg = 90.0;
 		std::vector<double> param_vtilde;	// parameter used in vtilde functions
 		std::vector<std::tuple<double,double,double>> shells; // (K1a, deltaa, S0_n) per shell
 		DimensionType dim = 2;
@@ -182,23 +182,43 @@ int GetCCO(int argc, char ** argv){
 		ofile << "val = ";	ifile >> val;
 		ofile << "sigma = "; ifile >> sigma;
 		ofile << "phi = "; ifile >> phi;
+		ofile << "box angle (degrees, 90=square, ignored for d!=2) = "; ifile >> angle_deg;
 		ofile << "# threads = "; ifile >> num_threads;
-		ofile << "num particle = "; ifile >>num; 
+		ofile << "num particle = "; ifile >>num;
 		ofile << "num configs = "; ifile >> numConfig;
-		L = pow(num, 1.0/(double)dim);	
+
+		// For d=2 rhombic box: volume = L^2 * sin(angle), so L = sqrt(N/sin(angle))
+		double angle_rad = angle_deg * M_PI / 180.0;
+		if (dim == 2)
+			L = sqrt((double)num / std::sin(angle_rad));
+		else
+			L = pow((double)num, 1.0/(double)dim);
 		double a = pow(phi/(HyperSphere_Volume(dim, 1.0)), 1.0/(double)dim);
-		
+		ofile << "box angle = " << angle_deg << " degrees" << (dim != 2 ? " (ignored, d!=2)" : "") << "\n";
+
 		char mode[100] = {};
-		std::string loadname, savename;		
+		std::string loadname, savename;
 		std::function<const Configuration(size_t i)> GetInitConfigs = nullptr;
 		ofile << "Initial conditions (random/input)= ";
 		ifile >> tempstring;
-		
+
 		if (strcmp (tempstring, "random") == 0){
-		/* Randomg initial conditions */
-			GetInitConfigs = [&rngGod, &dim, &num, &L](size_t i) ->Configuration {
-				Configuration pConfig = GetUnitCubicBox(dim, 0.1);
-				pConfig.Rescale(L);
+		/* Random initial conditions */
+			GetInitConfigs = [&rngGod, &dim, &num, &L, &angle_rad](size_t i) ->Configuration {
+				Configuration pConfig = [&]() {
+					if (dim == 2) {
+						// Rhombic box: a1=(L,0), a2=(L cos θ, L sin θ)
+						std::vector<GeometryVector> basis(2, GeometryVector(2));
+						basis[0].x[0] = L;
+						basis[1].x[0] = L * std::cos(angle_rad);
+						basis[1].x[1] = L * std::sin(angle_rad);
+						return Configuration(2, &basis[0], 0.1);
+					} else {
+						Configuration c = GetUnitCubicBox(dim, 0.1);
+						c.Rescale(L);
+						return c;
+					}
+				}();
 				for (size_t i = 0; i < num; i++)
 					pConfig.Insert("a", rngGod);
 				return pConfig;
@@ -210,7 +230,7 @@ int GetCCO(int argc, char ** argv){
 			ifile >> loadname;
 			ReadConfigPack c(loadname, 1.0);
 			GetInitConfigs = c;
-			
+
 			num_in_load = c.p.NumConfig();
 			ofile << loadname <<".ConfigPack contains " << num_in_load << " realizations\n";
 			ofile << "starts from the " << beg_idx << "-th configuration\n";
