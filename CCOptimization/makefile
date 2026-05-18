@@ -18,7 +18,7 @@ pot  = ../Potential/
 
 #----- Locate packages via spack -----
 GSL_PREFIX   := $(shell spack location -i gsl)
-NLOPT_PREFIX := $(shell spack location -i nlopt)
+NLOPT_PREFIX := $(shell spack location -i nlopt 2>/dev/null || echo /usr/local)
 BOOST_PREFIX := $(shell spack location -i boost)
 
 IDIR = -I$(GSL_PREFIX)/include \
