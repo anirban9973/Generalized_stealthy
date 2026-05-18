@@ -37,12 +37,16 @@ if __name__ == "__main__":
     # Edit these parameters to match your simulation setup
     # ---------------------------------------------------------------
     d = 2
-    delta = 2.481
     N = 4000
     L = np.sqrt(N)
+    delta = (2 * math.pi / L) * 25
+    print(f"delta = {delta}")
+    
     p = 25
     k1 = p * (2 * math.pi / L)
     k2 = k1 + delta
+
+    print(delta / (2*math.pi / L))
 
     # One (k1_n, k2_n) tuple per shell — same values as K1s and K1s+deltas
     # in ex_ground.sh at unit number density.
