@@ -33,11 +33,10 @@ d=2                            # space dimension
 # Generalized stealthy: M annular shells, each defined by (K1, delta) in unit number density.
 # S(k) = 0 for k in union of [K1^(n), K1^(n) + delta^(n)], n = 1..M.
 # To use a single standard stealthy shell: set M=1, K1s=(0.0), deltas=(your_delta).
-M=2                            # number of stealthy shells
-K1s=(0.0  0.5)                 # lower bounds k1^(n) for each shell (unit number density)
-deltas=(0.3  0.2)              # widths delta^(n) for each shell (unit number density)
-
-S0=0.                          # S0 > 0: equiluminous. S0 = 0.0: Stealthy
+M=2                            # number of shells
+K1s=(0.0  0.5)                 # lower bounds k1^(n) per shell (unit number density)
+deltas=(0.3  0.2)              # widths delta^(n) per shell (unit number density)
+S0s=(0.0  0.0)                 # S0 per shell: 0.0 = stealthy, >0 = equiluminous
 vareps0=0.0                    # relative strength of the soft-core repulsion. (0 means no soft-core repulsions.)
 phi_fake=0.15                  # (Do not touch) fictitious packing fraction
 sigma=0.20                     # exclusion radius of soft-core repulsion (unit number density)
@@ -65,12 +64,12 @@ v=`echo "4.*${pi}/3."| bc -l`
 fi
 a=`echo "e(l(${phi_fake}/${v})/${d})" | bc -l`
 
-# Build shell string: "M  K1a_0 deltaa_0  K1a_1 deltaa_1 ..."
+# Build shell string: "M  K1a_0 deltaa_0 S0_0  K1a_1 deltaa_1 S0_1 ..."
 shell_str="${M}"
 for (( n=0; n<M; n++ )); do
     K1a=`echo "${K1s[$n]}*${a}"       | bc -l`
     deltaa=`echo "${deltas[$n]}*${a}" | bc -l`
-    shell_str="${shell_str} ${K1a} ${deltaa}"
+    shell_str="${shell_str} ${K1a} ${deltaa} ${S0s[$n]}"
 done
 # ------------------------------------
 
@@ -83,7 +82,7 @@ echo "Save prefix   : ${fname}_GS"
 
 time_start=$(date +%s)
 
-${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $S0 $vareps0 ${sigma} ${phi_fake} \
+${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $vareps0 ${sigma} ${phi_fake} \
 ${threads} ${N} ${Nc} random ${fname}_GS \
 ground $eps0 $max_eval $algorithm run"
 
