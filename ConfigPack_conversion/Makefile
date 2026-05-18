@@ -7,7 +7,7 @@ BOOST_ROOT = $(shell spack location -i boost 2>/dev/null || echo /usr/local)
 HDF5_ROOT  = $(shell spack location -i hdf5  2>/dev/null || echo /usr/local)
 
 # Core library includes (ConfigPackData and its dependencies)
-CORE_INCLUDE = /projects/TORQUATO/am4197/JAEUK_Project/cores
+CORE_INCLUDE = ../cores
 
 INCLUDES = -I$(CORE_INCLUDE) -I. \
            -I$(BOOST_ROOT)/include \
