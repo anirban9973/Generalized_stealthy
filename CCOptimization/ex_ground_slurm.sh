@@ -34,9 +34,9 @@ d=2                            # space dimension
 # S(k) = 0 for k in union of [K1^(n), K1^(n) + delta^(n)], n = 1..M.
 # To use a single standard stealthy shell: set M=1, K1s=(0.0), deltas=(your_delta).
 M=2                            # number of shells
-K1s=(0.0  0.5)                 # lower bounds k1^(n) per shell (unit number density)
-deltas=(0.3  0.2)              # widths delta^(n) per shell (unit number density)
-S0s=(0.0  0.0)                 # S0 per shell: 0.0 = stealthy, >0 = equiluminous
+K1s=(0.0  2.4836470664490253)  # lower bounds k1^(n) per shell (unit number density)
+deltas=(2.4836470664490253  2.4836470664490253)  # widths delta^(n) per shell (unit number density)
+S0s=(1.0  0.0)                 # S0 per shell: 0.0 = stealthy, >0 = equiluminous
 vareps0=0.0                    # relative strength of the soft-core repulsion. (0 means no soft-core repulsions.)
 phi_fake=0.15                  # (Do not touch) fictitious packing fraction
 sigma=0.20                     # exclusion radius of soft-core repulsion (unit number density)
