@@ -37,7 +37,7 @@ sigma=0.20                     # soft-core exclusion radius (unit number density
 # --------------------------------
 # 3. Computational parameters
 # --------------------------------
-timelimit=23                   # simulation time limit in hours
+timelimit=10                   # simulation time limit in hours
 N=400                          # number of particles
 
 # Hole sweep parameters
