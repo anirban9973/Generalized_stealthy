@@ -1552,9 +1552,11 @@ int GetHoleCCO(int argc, char ** argv)
 	double Rf_start  = 1.0;
 	std::string savename;
 
+	double delta_Rf = 0.01;
 	ofile << "Save as "; ifile >> savename;
-	ofile << "Rf_start = "; ifile >> Rf_start;
-	ofile << "N_trial = ";  ifile >> N_trial;
+	ofile << "Rf_start = ";  ifile >> Rf_start;
+	ofile << "delta_Rf = ";  ifile >> delta_Rf;
+	ofile << "N_trial = ";   ifile >> N_trial;
 	ofile << "max_steps = "; ifile >> max_steps;
 
 	// ---- 3. Build initial config ----
@@ -1623,8 +1625,8 @@ int GetHoleCCO(int argc, char ** argv)
 	HoleBiasedPotential combined(phi_s, phi_ex);
 	combined.SetConfiguration(pConfig);
 
-	double Rf_step = 0.1 / k2_max;
-	ofile << "Rf_step = " << Rf_step << " (= 0.1/k2_max)\n";
+	double Rf_step = delta_Rf;
+	ofile << "Rf_step = " << Rf_step << " (physical units)\n";
 	ofile << "N_trial = " << N_trial << " per Rf value\n";
 	ofile << "max_steps = " << max_steps << " per trial\n";
 	ofile << "tolerance = " << tolerance << "\n";
