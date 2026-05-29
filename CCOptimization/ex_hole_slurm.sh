@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=CCO_hole
-#SBATCH --array=1-10               # array indices; each index = one independent seed
+#SBATCH --array=1               # array indices; each index = one independent seed
 #SBATCH --ntasks=1                 # one process per array task
-#SBATCH --cpus-per-task=4          # OpenMP threads per task
-#SBATCH --time=24:00:00            # wall-clock limit; should match timelimit below
-#SBATCH --mem=4G                   # memory per task
+#SBATCH --cpus-per-task=40          # OpenMP threads per task
+#SBATCH --time=10:00:00            # wall-clock limit; should match timelimit below
+#SBATCH --mem=32G                   # memory per task
 #SBATCH --output=logs/%x_%A_%a.out
 #SBATCH --error=logs/%x_%A_%a.err
 
@@ -24,12 +24,12 @@ fname=hole_run${SLURM_ARRAY_TASK_ID}
 # --------------------------------
 d=2                            # space dimension
 
-# Generalized stealthy: M annular shells, each defined by (K1, delta) at unit number density.
-# S(k) = 0 for k in union of [K1^(n), K1^(n) + delta^(n)], n = 1..M.
-M=2                            # number of shells
-K1s=(0.0  0.5)                 # lower bounds k1^(n) per shell (unit number density)
-deltas=(0.3  0.2)              # widths delta^(n) per shell (unit number density)
-S0s=(0.0  0.0)                 # S0 per shell: 0.0 = stealthy, >0 = equiluminous
+# Single stealthy shell benchmark: S(k) = 0 for |k| in [0, K]
+# K = 4*sqrt(pi*chi) at unit number density  (Torquato convention: chi = K^2 / (16*pi))
+chi=0.3                        # stealthiness parameter
+
+M=1                            # number of shells
+S0s=(0.0)                      # stealthy (S0 = 0)
 vareps0=0.0                    # soft-core repulsion strength (0 = off)
 phi_fake=0.15                  # fictitious packing fraction (do not touch)
 sigma=0.20                     # soft-core exclusion radius (unit number density)
@@ -38,7 +38,7 @@ sigma=0.20                     # soft-core exclusion radius (unit number density
 # 3. Computational parameters
 # --------------------------------
 timelimit=23                   # simulation time limit in hours
-N=4000                         # number of particles
+N=400                          # number of particles
 
 # Hole sweep parameters
 Rf_start=1.0                   # initial exclusion radius (physical units)
@@ -58,7 +58,15 @@ elif [ "$d" == 3 ]; then
 fi
 a=`echo "e(l(${phi_fake}/${v})/${d})" | bc -l`
 
-# Build shell string: "M  K1a_0 deltaa_0 S0_0  K1a_1 deltaa_1 S0_1 ..."
+# K = 4*sqrt(pi*chi) at unit number density; K1=0 so delta=K
+K=`echo "4*sqrt(${pi}*${chi})" | bc -l`
+K1s=(0.0)
+deltas=(${K})
+
+echo "chi           : ${chi}"
+echo "K (unit rho)  : ${K}"
+
+# Build shell string: "M  K1a_0 deltaa_0 S0_0 ..."
 shell_str="${M}"
 for (( n=0; n<M; n++ )); do
     K1a=`echo "${K1s[$n]}*${a}"       | bc -l`
