@@ -3,7 +3,7 @@
 #SBATCH --array=1               # array indices; each index = one independent seed
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=40          # OpenMP threads per task
-#SBATCH --time=10:00:00            # wall-clock limit; should match timelimit below
+#SBATCH --time=05:00:00            # wall-clock limit; should match timelimit below
 #SBATCH --mem=32G                   # memory per task
 #SBATCH --output=logs/%x_%A_%a.out
 #SBATCH --error=logs/%x_%A_%a.err
@@ -40,7 +40,7 @@ sigma=0.20                     # soft-core exclusion radius (unit number density
 # --------------------------------
 # 3. Computational parameters
 # --------------------------------
-timelimit=10                   # simulation time limit in hours
+timelimit=5                    # simulation time limit in hours
 N=400                          # number of particles
 
 # Hole sweep parameters
