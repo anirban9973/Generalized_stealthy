@@ -24,9 +24,12 @@ fname=hole_run${SLURM_ARRAY_TASK_ID}
 # --------------------------------
 d=2                            # space dimension
 
-# Single stealthy shell benchmark: S(k) = 0 for |k| in [0, K]
-# K = 4*sqrt(pi*chi) at unit number density  (Torquato convention: chi = K^2 / (16*pi))
-chi=0.3                        # stealthiness parameter
+# Annular stealthy shell: S(k) = 0 for |k| in [k1, k1+delta]
+# k1    = 2*sqrt(pi) * (chi_gen - chi0) / sqrt(chi0)   (unit number density)
+# delta = 4*sqrt(pi * chi0)                             (unit number density)
+# k2    = k1 + delta
+chi_gen=0.4                    # generalized stealthiness (outer shell boundary)
+chi0=0.3                       # inner stealthiness (sets k1 and delta)
 
 M=1                            # number of shells
 S0s=(0.0)                      # stealthy (S0 = 0)
@@ -59,13 +62,17 @@ elif [ "$d" == 3 ]; then
 fi
 a=`echo "e(l(${phi_fake}/${v})/${d})" | bc -l`
 
-# K = 4*sqrt(pi*chi) at unit number density; K1=0 so delta=K
-K=`echo "4*sqrt(${pi}*${chi})" | bc -l`
-K1s=(0.0)
-deltas=(${K})
+# k1 = 2*sqrt(pi) * (chi_gen - chi0) / sqrt(chi0)
+# delta = 4*sqrt(pi*chi0)
+k1=`echo "2*sqrt(${pi})*(${chi_gen}-${chi0})/sqrt(${chi0})" | bc -l`
+delta=`echo "4*sqrt(${pi}*${chi0})" | bc -l`
+K1s=(${k1})
+deltas=(${delta})
 
-echo "chi           : ${chi}"
-echo "K (unit rho)  : ${K}"
+echo "chi_gen       : ${chi_gen}"
+echo "chi0          : ${chi0}"
+echo "k1 (unit rho) : ${k1}"
+echo "delta (unit rho): ${delta}"
 
 # Build shell string: "M  K1a_0 deltaa_0 S0_0 ..."
 shell_str="${M}"
