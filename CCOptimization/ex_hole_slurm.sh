@@ -28,8 +28,9 @@ d=2                            # space dimension
 # k1    = 2*sqrt(pi) * (chi_gen - chi0) / sqrt(chi0)   (unit number density)
 # delta = 4*sqrt(pi * chi0)                             (unit number density)
 # k2    = k1 + delta
-chi_gen=0.4                    # generalized stealthiness (outer shell boundary)
-chi0=0.3                       # inner stealthiness (sets k1 and delta)
+# chi0 and chi_gen are read from params.dat (line 1: chi0, line 2: chi_gen)
+chi0=`awk 'NR==1' params.dat`
+chi_gen=`awk 'NR==2' params.dat`
 
 M=1                            # number of shells
 S0s=(0.0)                      # stealthy (S0 = 0)
