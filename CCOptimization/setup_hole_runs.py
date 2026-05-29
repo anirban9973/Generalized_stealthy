@@ -19,7 +19,7 @@ import subprocess
 
 # ---- parameters ----
 chi0_values   = [0.1, 0.2, 0.3, 0.4]
-chi_gen_pool  = [0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.49]
+chi_gen_pool  = [0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.46, 0.47, 0.48, 0.49]
 
 src_exe    = "CCO.out"
 src_slurm  = "ex_hole_slurm.sh"
