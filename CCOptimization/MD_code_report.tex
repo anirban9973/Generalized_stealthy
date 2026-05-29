@@ -1,0 +1,589 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{parskip}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue!60!black,
+    urlcolor=blue!60!black,
+}
+
+\lstset{
+    language=C++,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue!70!black}\bfseries,
+    commentstyle=\color{green!50!black}\itshape,
+    stringstyle=\color{red!60!black},
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    frame=single,
+    framerule=0.4pt,
+    rulecolor=\color{gray!40},
+    breaklines=true,
+    tabsize=4,
+    showstringspaces=false,
+    backgroundcolor=\color{gray!5},
+}
+
+\lstdefinestyle{bash}{
+    language=bash,
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue!70!black}\bfseries,
+    commentstyle=\color{green!50!black}\itshape,
+    numbers=left,
+    numberstyle=\tiny\color{gray},
+    numbersep=8pt,
+    frame=single,
+    framerule=0.4pt,
+    rulecolor=\color{gray!40},
+    breaklines=true,
+    backgroundcolor=\color{gray!5},
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{CCO-projects MD Code Report}
+\lhead{\leftmark}
+\cfoot{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\textbf{Molecular Dynamics Simulation\\
+in \texttt{CCOptimization}}\\[0.5em]
+\large A Detailed Code Walkthrough}
+\author{CCO-projects --- \texttt{generalized\_stealthy} branch}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+%=============================================================================
+\section{Overview}
+%=============================================================================
+
+The \texttt{CCOptimization} module implements NVT molecular dynamics (MD)
+simulations of point particles interacting through a \emph{stealthy
+collective-coordinate potential}, optionally combined with a soft-core
+repulsion. The goal is to sample finite-temperature configurations in which
+the structure factor $S(\mathbf{k})$ is suppressed (or exactly zero at $T=0$)
+over a prescribed union of annular shells in reciprocal space.
+
+The MD pipeline spans three files:
+\begin{itemize}
+    \item \texttt{Potential/MD\_System.h} / \texttt{MD\_System.cpp} ---
+          the integrator and thermostat (\texttt{ParticleMolecularDynamics} class).
+    \item \texttt{CCOptimization/main.cpp} --- the CLI driver; reads parameters,
+          builds the potential, and orchestrates the simulation stages.
+    \item \texttt{CCOptimization/ex\_MD\_slurm.sh} --- the SLURM submission
+          script; sets physical and computational parameters and calls the
+          executable.
+\end{itemize}
+
+%=============================================================================
+\section{The Stealthy Potential}
+%=============================================================================
+
+\subsection{Collective-coordinate energy}
+
+The interaction energy is the collective-coordinate (CC) potential
+\begin{equation}
+    \Phi = \frac{1}{V} \sum_{\mathbf{k} \in \mathcal{C}}
+           \tilde{V}(\mathbf{k})\,|\hat{\rho}(\mathbf{k})|^2
+    \label{eq:CC}
+\end{equation}
+where $V$ is the volume of the periodic simulation cell,
+$\mathcal{C}$ is the set of constrained wavevectors, and
+\begin{equation}
+    \hat{\rho}(\mathbf{k}) = \sum_{j=1}^{N} e^{i\mathbf{k}\cdot\mathbf{r}_j}
+    = \rho_\text{real}(\mathbf{k}) + i\,\rho_\text{imag}(\mathbf{k})
+\end{equation}
+is the collective coordinate (structure factor amplitude).
+The weight function $\tilde{V}(\mathbf{k})$ controls the shape of the
+potential within the excluded region (flat, overlap, or power-law; set via
+the \texttt{vtilde} argument).
+
+\subsection{Constrained wavevector set --- generalized stealthy shells}
+
+On the \texttt{generalized\_stealthy} branch, the excluded region is a
+\emph{union of $M$ annular shells}:
+\begin{equation}
+    \mathcal{C} = \left\{\mathbf{k} :
+    |\mathbf{k}| \in \bigcup_{n=1}^{M}
+    \bigl[k_1^{(n)},\; k_1^{(n)} + \delta^{(n)}\bigr]\right\}
+\end{equation}
+Each shell $n$ is specified by a lower bound $k_1^{(n)}$ and a width
+$\delta^{(n)}$, both in unit-number-density units.
+The special case $M=1$, $k_1^{(1)}=0$ recovers the original single-shell
+stealthy potential.
+
+\subsection{Force on particle $i$}
+
+Taking the gradient of Eq.~\eqref{eq:CC} with respect to $\mathbf{r}_i$:
+\begin{equation}
+    \mathbf{F}_i^{\text{CC}} = -\frac{2}{V}
+    \sum_{\mathbf{k}\in\mathcal{C}} \tilde{V}(\mathbf{k})
+    \Bigl[
+        \rho_\text{imag}(\mathbf{k})\cos(\mathbf{k}\cdot\mathbf{r}_i)
+        - \rho_\text{real}(\mathbf{k})\sin(\mathbf{k}\cdot\mathbf{r}_i)
+    \Bigr]\mathbf{k}
+    \label{eq:force}
+\end{equation}
+
+\subsection{Soft-core repulsion}
+
+When \texttt{vareps0} $> 0$, a contact (soft-core) potential is added:
+\begin{equation}
+    \Phi_\text{rep} = \varepsilon_0 \sum_{i<j}
+    \left(1 - \frac{r_{ij}}{\sigma_i + \sigma_j}\right)^2
+    \Theta(\sigma_i + \sigma_j - r_{ij})
+\end{equation}
+where $\sigma_i$ is the radius of particle $i$ and $\Theta$ is the
+Heaviside step function.
+The total energy is $\Phi_\text{tot} = u_0\,\Phi_\text{CC} + e_0\,\Phi_\text{rep}$.
+
+%=============================================================================
+\section{The \texttt{ParticleMolecularDynamics} Class}
+%=============================================================================
+
+Defined in \texttt{Potential/MD\_System.h}, this class owns the full
+dynamical state of the system.
+
+\subsection{Member variables}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Variable & Type & Description \\
+\midrule
+\texttt{Position} & \texttt{Configuration} & Particle positions (relative coords) \\
+\texttt{Velocity} & \texttt{vector<GeometryVector>} & Velocities, one per particle \\
+\texttt{Acceleration} & \texttt{vector<GeometryVector>} & Accelerations (= forces / mass) \\
+\texttt{Mass} & \texttt{vector<double>} & Particle masses (all set to 1.0) \\
+\texttt{TimeStep} & \texttt{double} & MD time step $\Delta t$ \\
+\texttt{Time} & \texttt{double} & Cumulative simulation time \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Acceleration computation --- \texttt{\_GetAcc}}
+
+\begin{lstlisting}
+void ParticleMolecularDynamics::_GetAcc(Potential & potential)
+{
+    potential.AllForce(this->Acceleration);   // F_i for all i at once
+    for(int i=0; i<this->Acceleration.size(); i++)
+        this->Acceleration[i].MultiplyFrom(1.0 / this->Mass[i]);
+}
+\end{lstlisting}
+
+\texttt{AllForce} calls \texttt{Force(i)} for every particle $i$, which
+evaluates Eq.~\eqref{eq:force}. Crucially, $\rho(\mathbf{k})$ is computed
+once for the full configuration before any force is evaluated (via the
+\texttt{RhoValid} dirty-bit cache).
+
+%=============================================================================
+\section{The Velocity-Verlet Integrator --- \texttt{Evolve}}
+%=============================================================================
+
+\texttt{Evolve(n, potential)} advances the system by $n$ time steps of
+size $\Delta t$ using the standard velocity-Verlet algorithm.
+\textbf{All $N$ particles are updated at every step.}
+
+\subsection{Algorithm (one step)}
+
+\begin{align}
+    \mathbf{v}_i\!\left(t + \tfrac{\Delta t}{2}\right)
+        &= \mathbf{v}_i(t) + \tfrac{\Delta t}{2}\,\mathbf{a}_i(t)
+        && \text{(half-kick, all } i\text{)}
+    \\
+    \mathbf{r}_i(t + \Delta t)
+        &= \mathbf{r}_i(t) + \Delta t\,\mathbf{v}_i\!\left(t + \tfrac{\Delta t}{2}\right)
+        && \text{(drift, all } i\text{)}
+    \\
+    \mathbf{a}_i(t + \Delta t)
+        &= \mathbf{F}_i / m
+        && \text{(force eval, all } i \text{ globally)}
+    \\
+    \mathbf{v}_i(t + \Delta t)
+        &= \mathbf{v}_i\!\left(t + \tfrac{\Delta t}{2}\right)
+           + \tfrac{\Delta t}{2}\,\mathbf{a}_i(t+\Delta t)
+        && \text{(half-kick, all } i\text{)}
+\end{align}
+
+\subsection{Code}
+\begin{lstlisting}
+void ParticleMolecularDynamics::Evolve(size_t repeat, Potential & potential)
+{
+    for(size_t u=0; u<repeat; u++)
+    {
+        // half-kick
+        for(long i=0; i<this->NumParticle; i++)
+            this->Velocity[i].AddFrom(0.5*this->TimeStep*this->Acceleration[i]);
+
+        // drift
+        for(long i=0; i<this->NumParticle; i++){
+            GeometryVector newCart = this->Position.GetCartesianCoordinates(i)
+                                   + this->TimeStep*this->Velocity[i];
+            this->Position.MoveParticle(i,
+                this->Position.CartesianCoord2RelativeCoord(newCart));
+        }
+
+        // force re-evaluation
+        potential.SetConfiguration(this->Position);
+        this->_GetAcc(potential);
+
+        // half-kick
+        for(long i=0; i<this->NumParticle; i++)
+            this->Velocity[i].AddFrom(0.5*this->TimeStep*this->Acceleration[i]);
+
+        this->Time += this->TimeStep;
+    }
+}
+\end{lstlisting}
+
+Velocity Verlet is symplectic and time-reversible, making it suitable for
+MD. Energy conservation (in the microcanonical NVE sense) depends on the
+choice of $\Delta t$.
+
+%=============================================================================
+\section{The Anderson Thermostat --- \texttt{AndersonEvolve}}
+%=============================================================================
+
+\subsection{Purpose}
+
+\texttt{AndersonEvolve} implements the \textbf{Anderson thermostat} to
+maintain NVT (constant temperature) dynamics. It augments each velocity-Verlet
+step with stochastic velocity resets that couple the system to a fictitious
+heat bath at temperature $T$.
+
+\subsection{Mechanism}
+
+After each complete velocity-Verlet step, a running accumulator
+\texttt{ResetCount} is incremented by \texttt{ResetSpeedProbability} (= 0.01).
+Whenever \texttt{ResetCount} $\geq 1$, one randomly chosen particle has
+its velocity completely redrawn from the Maxwell-Boltzmann distribution
+at temperature $T$:
+
+\begin{lstlisting}
+ResetCount += ResetSpeedProbability;      // 0.01 per step
+for (; ResetCount > 0; ResetCount -= 1.0)
+{
+    size_t i = floor(gen.RandomDouble() * NumParticle);  // random particle
+    double sigma = sqrt(kT / Mass[i]);
+    for (DimensionType j = 0; j < Dimension; j++)
+    {
+        // Box-Muller: Gaussian with std = sigma
+        this->Velocity[i].x[j] =
+            sqrt(-2*log(gen.RandomDouble()))
+            * sin(2*pi*gen.RandomDouble())
+            * sigma;
+    }
+}
+\end{lstlisting}
+
+\subsection{Box-Muller transform}
+
+The new velocity component is drawn from a Gaussian via the Box-Muller
+transform. If $u_1, u_2 \sim \mathcal{U}(0,1)$, then
+\begin{equation}
+    v_j = \sqrt{-2\ln u_1}\;\sin(2\pi u_2)\;\sigma,
+    \qquad \sigma = \sqrt{k_BT/m}
+\end{equation}
+is Gaussian with mean 0 and variance $k_BT/m$, which is the Maxwell-Boltzmann
+distribution for a single velocity component:
+\begin{equation}
+    P(v_j) \propto \exp\!\left(-\frac{m v_j^2}{2k_BT}\right)
+\end{equation}
+
+\subsection{Kick rate}
+
+With \texttt{ResetSpeedProbability} = 0.01:
+\begin{itemize}
+    \item One velocity reset occurs every \textbf{100 steps} (deterministic,
+          via the accumulator).
+    \item The chosen particle is \textbf{random} each time.
+    \item For $N = 100$ particles, each particle is reset on average once
+          every $100 \times 100 = 10{,}000$ steps.
+\end{itemize}
+
+The thermostat acts weakly: most dynamics between kicks are purely Newtonian,
+preserving realistic trajectories while maintaining the target temperature
+over long times.
+
+%=============================================================================
+\section{Velocity Initialization --- \texttt{SetRandomSpeed}}
+%=============================================================================
+
+\begin{lstlisting}
+void ParticleMolecularDynamics::SetRandomSpeed(double kT, RandomGenerator & gen)
+{
+    for(size_t i=0; i<this->NumParticle; i++)
+    {
+        double sigma = sqrt(kT / this->Mass[i]);
+        for (DimensionType j = 0; j < this->Dimension; j++)
+            this->Velocity[i].x[j] =
+                sqrt(-2*log(gen.RandomDouble()))
+                * sin(2*pi*gen.RandomDouble()) * sigma;
+    }
+}
+\end{lstlisting}
+
+This is an \emph{instantaneous} reset of \textbf{all} $N \times d$ velocity
+components simultaneously, drawn from the Maxwell-Boltzmann distribution
+at temperature $T$. It is used during equilibration (Stage 1) to aggressively
+drive the system from $T=0$ to the target temperature.
+
+%=============================================================================
+\section{The Simulation Pipeline --- \texttt{CollectiveCoordinateMD}}
+%=============================================================================
+
+The full MD run is managed by \texttt{CollectiveCoordinateMD} in
+\texttt{CCOptimization/main.cpp}. It proceeds through three phases.
+
+\subsection{Phase 0: Initial quench}
+
+\begin{lstlisting}
+RelaxStructure_NLOPT(*pConfig, *pPotential, 0.0, 0, 0.0, 1000);
+psystem = new ParticleMolecularDynamics(*pConfig, TimeStep, 1.0);
+\end{lstlisting}
+
+The initial configuration (random or loaded) is first minimized to a
+local energy minimum via LBFGS (\texttt{RelaxStructure\_NLOPT}).
+This ensures the MD starts from a ground state at $T=0$ rather than
+a high-energy random configuration. The \texttt{ParticleMolecularDynamics}
+object is then created with all velocities set to zero.
+
+\subsection{Phase 1: Equilibration (Stage 1)}
+
+Runs \texttt{EquilibrateSamples} blocks (set by \texttt{numequilibration}).
+Each block:
+\begin{enumerate}
+    \item \texttt{SetRandomSpeed(T)} --- redraw \emph{all} velocities from
+          Maxwell-Boltzmann at $T$. This is a complete velocity reset,
+          not the Anderson thermostat.
+    \item \texttt{Evolve(StepPerSample/2)} --- pure NVE for $n/2$ steps.
+    \item Repeat steps 1--2 once more.
+\end{enumerate}
+
+Total steps in equilibration: $\texttt{numequilibration} \times \texttt{samplesteps}$.
+\textbf{No configurations are saved.}
+
+The purpose is to heat the system rapidly from $T=0$ to the target
+temperature. The brute-force velocity resets are intentionally aggressive ---
+they are not physically realistic but quickly establish the correct
+kinetic energy scale.
+
+\subsection{Phase 2: Sampling (Stage 2)}
+
+Runs \texttt{SampleNumber} = \texttt{Nc} blocks.
+Each block:
+\begin{enumerate}
+    \item \texttt{AndersonEvolve(StepPerSample/2)} --- velocity Verlet
+          with Anderson thermostat for $n/2$ steps.
+    \item \texttt{Evolve(StepPerSample/2)} --- pure NVE for $n/2$ steps.
+    \item \textbf{Save} the current configuration to the output
+          \texttt{ConfigPack}.
+\end{enumerate}
+
+One configuration is saved per block, separated by
+$\texttt{samplesteps} \times \Delta t$ time units.
+
+\subsection{Timeline summary}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lccc}
+\toprule
+Phase & Blocks & Steps/block & Saved? \\
+\midrule
+Quench (LBFGS) & 1 & up to 1000 evals & No \\
+Equilibration & \texttt{numequilibration} & \texttt{samplesteps} & No \\
+Sampling & \texttt{Nc} & \texttt{samplesteps} & Yes (1 per block) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+With the example script parameters (\texttt{numequilibration}=10,
+\texttt{samplesteps}=1000, \texttt{Nc}=20, $\Delta t$=0.05):
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lrr}
+\toprule
+Phase & Total steps & Total time units \\
+\midrule
+Equilibration & 10,000 & 500 \\
+Sampling & 20,000 & 1000 \\
+\textbf{Total} & \textbf{30,000} & \textbf{1500} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%=============================================================================
+\section{Checkpoint and Restart --- \texttt{restore}}
+%=============================================================================
+
+When \texttt{restore} is passed, the code saves a binary checkpoint
+\texttt{fname\_MD.MDDump} at the end (or when the wall-clock limit is reached).
+The checkpoint stores the full dynamical state:
+position, velocity, acceleration, time, stage counter, and step counter.
+
+On the next invocation (same command with \texttt{restore}), the code
+detects the checkpoint file, loads it, and \textbf{continues the trajectory
+from where it stopped} --- no re-equilibration, no loss of progress.
+
+This is essential for long cluster jobs. The wall-clock time limit is checked
+at the start of every block:
+\begin{lstlisting}
+if (std::time(nullptr) > TimeLimit || std::time(nullptr) > ::TimeLimit)
+{
+    // save .MDDump checkpoint
+    // write fname_continue.txt warning
+    return 0;
+}
+\end{lstlisting}
+
+%=============================================================================
+\section{Stopping Criterion}
+%=============================================================================
+
+The code has \textbf{no automatic steady-state detection}. It stops when:
+\begin{enumerate}
+    \item All \texttt{Nc} sampling blocks are completed, or
+    \item The wall-clock time limit (\texttt{timelimit} hours) is reached.
+\end{enumerate}
+
+Whether the system has truly equilibrated is the user's responsibility.
+The log prints $E_p$ (potential energy) and $E_k$ (kinetic energy) at
+each saved snapshot:
+\begin{lstlisting}
+std::cout << "2:" << i << "/" << SampleNumber
+          << " \tE_relax=" << Ep
+          << " \tE_k=" << Ek << '\n';
+\end{lstlisting}
+
+The user should inspect these values and verify that $E_p$ has stabilized
+before using the saved configurations for analysis.
+
+%=============================================================================
+\section{The SLURM Script --- \texttt{ex\_MD\_slurm.sh}}
+%=============================================================================
+
+\subsection{Parameter encoding}
+
+Physical k-space parameters are specified at unit number density and
+converted to absolute units via:
+\begin{equation}
+    a = \left(\frac{\phi_\text{fake}}{V_d}\right)^{1/d}, \qquad
+    K_{1,a}^{(n)} = k_1^{(n)} \cdot a, \qquad
+    \delta_a^{(n)} = \delta^{(n)} \cdot a
+\end{equation}
+where $V_d$ is the volume of a unit hypersphere in $d$ dimensions.
+The code divides back by $a$ to recover absolute values.
+This encoding makes the script parameters independent of $N$ and box size.
+
+\subsection{Shell string construction}
+
+\begin{lstlisting}[style=bash]
+shell_str="${M}"
+for (( n=0; n<M; n++ )); do
+    K1a=`echo "${K1s[$n]}*${a}"       | bc -l`
+    deltaa=`echo "${deltas[$n]}*${a}" | bc -l`
+    shell_str="${shell_str} ${K1a} ${deltaa}"
+done
+\end{lstlisting}
+
+\subsection{CLI call}
+
+\begin{lstlisting}[style=bash]
+${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< \
+    "${d} ${shell_str} $S0 $vareps0 ${sigma} ${phi_fake} \
+     ${threads} ${N} ${Nc} random ${fname}_MD \
+     MD $T $dt $int_samp $num_equi $restore run"
+\end{lstlisting}
+
+\subsection{Key parameters}
+
+\begin{center}
+\renewcommand{\arraystretch}{1.4}
+\begin{tabular}{lll}
+\toprule
+Script variable & Default & Description \\
+\midrule
+\texttt{d} & 2 & Spatial dimension \\
+\texttt{M} & 2 & Number of stealthy shells \\
+\texttt{K1s} & (0.0, 0.5) & Lower bounds per shell (unit density) \\
+\texttt{deltas} & (0.3, 0.2) & Widths per shell (unit density) \\
+\texttt{S0} & 0.0 & Target $S(\mathbf{k})$; 0 = stealthy \\
+\texttt{vareps0} & 1.0 & Soft-core repulsion strength \\
+\texttt{N} & 100 & Number of particles \\
+\texttt{Nc} & 20 & Configurations to collect \\
+\texttt{temperature} & $10^{-3}$ & Dimensionless temperature (units of $v_0$) \\
+\texttt{timestep} & 0.05 & MD time step $\Delta t$ \\
+\texttt{samplesteps} & 1000 & Steps between saved snapshots \\
+\texttt{numequilibration} & 10 & Equilibration blocks \\
+\texttt{timelimit} & 4 & Wall-clock limit (hours) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%=============================================================================
+\section{Data Flow Diagram}
+%=============================================================================
+
+\begin{center}
+\renewcommand{\arraystretch}{1.6}
+\begin{tabular}{cl}
+\toprule
+Step & Action \\
+\midrule
+1 & \texttt{ex\_MD\_slurm.sh}: encode $k$-space shells, build CLI string \\
+2 & \texttt{main.cpp / GetCCO}: parse stdin, build constraint list $\mathcal{C}$ \\
+3 & \texttt{RepulsiveCCPotential}: store $({\bf k}, \tilde{V}({\bf k}))$ for each ${\bf k} \in \mathcal{C}$ \\
+4 & \texttt{CollectiveCoordinateMD}: initial LBFGS quench \\
+5 & Stage 1: \texttt{SetRandomSpeed} + \texttt{Evolve} $\times$ \texttt{numequilibration} \\
+6 & Stage 2: \texttt{AndersonEvolve} + \texttt{Evolve} $\times$ \texttt{Nc}, save each \\
+7 & Output: \texttt{fname\_MD.ConfigPack} with \texttt{Nc} configurations \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%=============================================================================
+\section{Summary}
+%=============================================================================
+
+\begin{itemize}
+    \item The integrator is \textbf{velocity Verlet} --- symplectic,
+          time-reversible, applied to \emph{all} $N$ particles at every step.
+    \item The thermostat is \textbf{Anderson}: one randomly chosen particle
+          has its velocity redrawn from Maxwell-Boltzmann every 100 steps.
+          Between kicks, dynamics are purely Newtonian (NVE).
+    \item \textbf{Equilibration} uses brute-force full velocity resets
+          (\texttt{SetRandomSpeed}) to heat the system from $T=0$ rapidly.
+          No configs are saved.
+    \item \textbf{Sampling} switches to the gentle Anderson thermostat.
+          One configuration is saved every \texttt{samplesteps} $\times \Delta t$
+          time units.
+    \item There is \textbf{no automatic equilibration check}. The user must
+          inspect $E_p$ convergence in the log.
+    \item \textbf{Checkpointing} via \texttt{restore} allows seamless
+          continuation across SLURM job submissions.
+    \item The \texttt{generalized\_stealthy} branch supports $M$ annular
+          shells in $k$-space; the script builds the shell string automatically.
+\end{itemize}
+
+\end{document}

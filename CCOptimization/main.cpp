@@ -33,6 +33,7 @@ size_t Verbosity = 3;
 
 #include "RepulsiveCCPotential.h"
 #include "MultiStealthyPotential.h"
+#include "MultiShellS0Potential.h"
 
 /** \brief Perform the energy optimization multiple times for a given potential energy.
 Obtain ground-state configurations from multi initial configurations.
@@ -161,16 +162,23 @@ int GetCCO(int argc, char ** argv){
 	TimeLimit = ProgramStart + timelimit_in_hour*3600 - 5*60;//default time limit of 144 hours - 5 mins (for saving progress)
 	
 	{/* a piece of code to compute the stealthy (hyperuniform) packing at unit number density ... */
-		double K1, K2, val, chi = 0, L = 10, sigma, phi = 0.1, S0=0.0;
+		double val, chi = 0, L = 10, sigma, phi = 0.1;
 		std::vector<double> param_vtilde;	// parameter used in vtilde functions
+		std::vector<std::tuple<double,double,double>> shells; // (K1a, deltaa, S0_n) per shell
 		DimensionType dim = 2;
 		size_t num = L * L*L, numConfig = 300, num_in_load = 0, num_in_Init = 0, num_in_Success = 0;
 
 		int num_threads = 4;
 		ofile << "Dimension = "; ifile >> dim;
-		ofile << "K1a = ";	ifile >> K1;
-		ofile << "K2a = ";	ifile >> K2;
-		ofile << "S0 = ";	ifile >> S0;
+		size_t M = 1;
+		ofile << "M (number of stealthy shells) = "; ifile >> M;
+		for (size_t n = 0; n < M; n++) {
+			double K1n, deltan, S0n;
+			ofile << "K1a[" << n << "] = "; ifile >> K1n;
+			ofile << "delta_a[" << n << "] = "; ifile >> deltan;
+			ofile << "S0[" << n << "] = "; ifile >> S0n;
+			shells.emplace_back(K1n, deltan, S0n);
+		}
 		ofile << "val = ";	ifile >> val;
 		ofile << "sigma = "; ifile >> sigma;
 		ofile << "phi = "; ifile >> phi;
@@ -222,71 +230,71 @@ int GetCCO(int argc, char ** argv){
 
 		/* Define potential */
 		ofile << "Define potential \n";
-		RepulsiveCCPotential * potential = nullptr;
+		MultiShellS0Potential * potential = nullptr;
 		{
-			double k1 = K1 / a, k2 = K2 / a;
+			// Convert shells from encoded (Ka, deltaa) units to absolute k-space (k1, k2, S0_n)
+			std::vector<std::tuple<double,double,double>> shells_abs; // (k1, k2, S0_n)
+			double k2_max = 0;
+			for (size_t n = 0; n < M; n++) {
+				double k1n = std::get<0>(shells[n]) / a;
+				double k2n = k1n + std::get<1>(shells[n]) / a;
+				double S0n = std::get<2>(shells[n]);
+				shells_abs.emplace_back(k1n, k2n, S0n);
+				k2_max = std::max(k2_max, k2n);
+				ofile << "Shell " << n << ": k1=" << k1n << ", k2=" << k2n << ", S0=" << S0n << "\n";
+			}
+
 			Configuration Config = GetInitConfigs(beg_idx);
-			potential = new RepulsiveCCPotential(dim, val, sigma, S0);
+			potential = new MultiShellS0Potential(dim, val, sigma);
 			ofile << "With repulsion, val = " << val << ", sigma = " << sigma << "\n";
 
 			potential->ParallelNumThread = num_threads;
-			potential->CCPotential->ParallelNumThread = num_threads;
+			potential->CCPotential1->ParallelNumThread = num_threads;
+			potential->CCPotential2->ParallelNumThread = num_threads;
 
-			if (S0 == 0.0)
-			{
-				std::vector<double> vals;	vals.emplace_back(0);
-				std::function<double (double k)> v;
-				if (vtilde.compare("flat") == 0){
-					ofile << "vtilde function = flat (by default)\n";
-					v = [](double k) -> double { return 1.0; };
-				}
-				else if (vtilde.compare("overlap") == 0){
-					ofile << "vtilde function = overlap function\n";
-					param_vtilde.emplace_back(k2);
-					v = [&dim, &param_vtilde](double k) -> double { return alpha(dim, k/(param_vtilde[0]));};
-				}
-				else if (vtilde.compare("power-law") == 0){
-					double m;
-					ofile << "vtilde function = power-law function \n";
-					ofile << "exponent? = ";	ifile >> m;	
-					param_vtilde.emplace_back(k2);
-					param_vtilde.emplace_back(m);
-					v = [&param_vtilde](double k) -> double { return std::pow(1. - k/param_vtilde[0], param_vtilde[1]);};
-				}
+			// vtilde function applies to stealthy shells (S0=0); equiluminous shells always use V=1
+			std::function<double(double)> v;
+			if (vtilde.compare("flat") == 0) {
+				ofile << "vtilde function = flat (by default)\n";
+				v = [](double k) -> double { return 1.0; };
+			}
+			else if (vtilde.compare("overlap") == 0) {
+				ofile << "vtilde function = overlap function\n";
+				param_vtilde.emplace_back(k2_max);
+				v = [&dim, &param_vtilde](double k) -> double { return alpha(dim, k/(param_vtilde[0])); };
+			}
+			else if (vtilde.compare("power-law") == 0) {
+				double m;
+				ofile << "vtilde function = power-law function\n";
+				ofile << "exponent? = "; ifile >> m;
+				param_vtilde.emplace_back(k2_max);
+				param_vtilde.emplace_back(m);
+				v = [&param_vtilde](double k) -> double { return std::pow(1. - k/param_vtilde[0], param_vtilde[1]); };
+			}
 
-				double K1_modulus = k1 * k1;
-				std::vector<GeometryVector> ks_temp = GetKs(Config, k2, k2, 1);
-				for (auto k = ks_temp.begin(); k != ks_temp.end(); k++) {
-					if (k->Modulus2() > K1_modulus) {
-						vals[0] = v(std::sqrt(k->Modulus2()));
-						potential->CCPotential->AddConstraint(*k, vals);
-						chi++;
-
-						if (Verbosity > 3){
-							ofile << std::sqrt(k->Modulus2()) << "\t" << vals[0] <<"\n";
+			// Route each k-point to CCPotential1 (stealthy) or CCPotential2 (equiluminous)
+			std::vector<GeometryVector> ks_temp = GetKs(Config, k2_max, k2_max, 1);
+			for (auto k = ks_temp.begin(); k != ks_temp.end(); k++) {
+				double km2 = k->Modulus2();
+				for (auto& s : shells_abs) {
+					double k1n = std::get<0>(s), k2n = std::get<1>(s), S0n = std::get<2>(s);
+					if (km2 > k1n*k1n && km2 <= k2n*k2n) {
+						if (S0n == 0.0) {
+							std::vector<double> vals = {v(std::sqrt(km2))};
+							potential->CCPotential1->AddConstraint(*k, vals);
+							if (Verbosity > 3)
+								ofile << std::sqrt(km2) << "\t" << vals[0] << "\n";
+						} else {
+							std::vector<double> vals = {1.0, S0n};
+							potential->CCPotential2->AddConstraint(*k, vals);
 						}
-					}
-					
-				}
-				chi /= dim * (num - 1);
-			}
-			else{
-				ofile << "equiluminous patterns with S0 = " << S0 << "\n";
-				std::vector<double> vals;
-				vals.emplace_back(1.0);
-				vals.emplace_back(S0);
-				double K1_modulus = k1 * k1;
-				std::vector<GeometryVector> ks_temp = GetKs(Config, k2, k2, 1);
-				for (auto k = ks_temp.begin(); k != ks_temp.end(); k++) {
-					if (k->Modulus2() > K1_modulus) {
-						potential->CCPotential->AddConstraint(*k, vals);
 						chi++;
-					}					
+						break;
+					}
 				}
-				chi /= dim * (num - 1);				
 			}
-			//potential->CCPotential->PrintConstraints(ofile);
-			ofile << "chi = " << chi << std::endl;			
+			chi /= dim * (num - 1);
+			ofile << "chi = " << chi << std::endl;
 		}
 
 
@@ -1670,7 +1678,7 @@ int CollectiveCoordinateMD(Configuration * pConfig, Potential * pPotential, Rand
 	{
 		BeforeRelaxPack.Clear();
 		/* equilibration starts from a ground state */
-		RelaxStructure_NLOPT(*pConfig, *pPotential, 0.0, 0, 0.0, 1000);
+		RelaxStructure_NLOPT(*pConfig, *pPotential, 0.0, 0, 0.0, 100000);
 		pPot->SetConfiguration(* pConfig);
 		double E=pPot->Energy();
 

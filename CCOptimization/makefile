@@ -7,87 +7,35 @@
 # Email: phy000.kim@gmail.com
 #=============================
 
-MACHINE = HOME
-#MACHINE = DELLA
-#MACHINE = NURION
+#==============================
+# Spack-based dependency resolution (machine-independent)
+#==============================
 
-#==============================
-# DELLA
-#==============================
-ifeq ($(MACHINE), DELLA)
-$(info	$(MACHINE))
-#----- Directories ------------
+#----- Source directories (relative paths, unchanged) -----
 core = ../cores/
 pair = ../PairStat/
-pot = ../Potential/
+pot  = ../Potential/
 
-IDIR = -I/$(HOME)/install/include -I$(core) -I$(pair) -I$(pot) #-I/home/jaeukk/install/include # include directory
-ODIR = ./obj/# object directory
-#SDIR = ./# source directory
-#Idir = ./# header directory
-EXEdir = ~/EXC/# directory for executables
+#----- Locate packages via spack -----
+GSL_PREFIX   := $(shell spack location -i gsl)
+NLOPT_PREFIX := $(shell spack location -i nlopt 2>/dev/null || echo /usr/local)
+BOOST_PREFIX := $(shell spack location -i boost)
 
-#	Executable
+IDIR = -I$(GSL_PREFIX)/include \
+       -I$(NLOPT_PREFIX)/include \
+       -I$(BOOST_PREFIX)/include \
+       -I$(core) -I$(pair) -I$(pot)
+
+GSLLIB  = -L$(GSL_PREFIX)/lib -lgsl -lgslcblas -Wl,-rpath,$(GSL_PREFIX)/lib
+NLOPTLIB = -L$(NLOPT_PREFIX)/lib -lnlopt -Wl,-rpath,$(NLOPT_PREFIX)/lib
+LIBS = -lm $(GSLLIB) $(NLOPTLIB)
+
+PREPRO =
+
+#----- Output directories and target -----
+ODIR   = ./obj/
+EXEdir = ./
 TARGET = $(EXEdir)CCO.out
-
-#----- Flags and libraries -----
-GSLLIB = -L/usr/lib64 -lgsl -lgslcblas
-NLOPTLIB = -L/usr/lib64 -lnlopt #-L/home/jaeukk/install/lib64 -lnlopt
-LIBS = -lm $(GSLLIB) $(NLOPTLIB)
-PREPRO = -DDELLA
-endif
-
-#==============================
-# MY LAPTOP
-#==============================
-ifeq ($(MACHINE), HOME)
-$(info	$(MACHINE))
-#----- Directories ------------
-core = ../cores/
-pair = ../PairStat/
-pot = ../Potential/
-
-IDIR = -I$(HOME)/install/include/ -I$(core) -I$(pair) -I$(pot) # include directory
-ODIR = ./obj/# object directory
-#SDIR = ./# source directory
-#Idir = ./# header directory
-EXEdir = ./# directory for executables
-
-#	Executable
-TARGET = $(EXEdir)CCO.out 
-
-#----- Flags and libraries -----
-GSLLIB = -L/$(HOME)/install/lib -lgsl -lgslcblas -Wl,-rpath,/$(HOME)/install/lib
-NLOPTLIB = -L/$(HOME)/install/lib -lnlopt
-LIBS = -lm $(GSLLIB) $(NLOPTLIB)
-PREPRO = 
-endif
-
-#==============================
-# CLUSTER 2
-#==============================
-ifeq ($(MACHINE), NURION)
-$(info	$(MACHINE))
-#----- Directories ------------
-core = ../cores/
-pair = ../PairStat/
-pot = ../Potential/
-
-IDIR = -I/usr/include/ -I$(HOME)/install/include -I/usr/local/include/ -I$(core) -I$(pair) -I$(pot) # include directory
-ODIR = ./obj/# object directory
-#SDIR = ./# source directory
-#Idir = ./# header directory
-EXEdir = ~/EXC/# directory for executables
-
-#	Executable
-TARGET = $(EXEdir)CCO.out 
-
-#----- Flags and libraries -----
-GSLLIB = -L$(HOME)/install/lib -lgsl -lgslcblas -Wl,-rpath,$(HOME)/install/lib
-NLOPTLIB = -L$(HOME)/install/lib64 -lnlopt -Wl,-rpath,$(HOME)/install/lib64
-LIBS = -lm $(GSLLIB) $(NLOPTLIB) 
-PREPRO = 
-endif
 
 #==============================
 #	Common flages
