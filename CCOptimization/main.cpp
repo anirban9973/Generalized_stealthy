@@ -34,6 +34,8 @@ size_t Verbosity = 3;
 #include "RepulsiveCCPotential.h"
 #include "MultiStealthyPotential.h"
 #include "MultiShellS0Potential.h"
+#include "ExclusionFieldPotential.h"
+#include "HoleBiasedPotential.h"
 
 /** \brief Perform the energy optimization multiple times for a given potential energy.
 Obtain ground-state configurations from multi initial configurations.
@@ -1486,6 +1488,219 @@ int GetMultiCCO(int argc, char ** argv){
 }
 
 
+// ============================================================
+// Hole-statistics sweep: find R_c for MultiShellS0 potential
+// ============================================================
+int GetHoleCCO(int argc, char ** argv)
+{
+	std::istream & ifile = std::cin;
+	std::ostream & ofile = std::cout;
+
+	size_t timelimit_in_hour = 144;
+	int seed = 0;
+	std::string vtilde = "flat";
+	if (argc > 2) {
+		timelimit_in_hour = (time_t)std::atoi(argv[2]);
+		if (argc > 3) seed = std::atoi(argv[3]);
+		if (argc > 4) Verbosity = (size_t)std::atoi(argv[4]);
+		if (argc > 5) vtilde = std::string(argv[5]);
+	}
+
+	RandomGenerator rngGod(seed);
+	ofile << "Time limit = " << timelimit_in_hour << " hours\n";
+	ofile << "Seed = " << seed << "\n";
+	ofile << "vtilde = " << vtilde << "\n";
+
+	nlopt_srand(999);
+	auto start = std::time(nullptr);
+	ProgramStart = start;
+	TimeLimit = ProgramStart + timelimit_in_hour*3600 - 5*60;
+
+	// ---- 1. Simulation box / shell definitions ----
+	DimensionType dim = 2;
+	double val, sigma, phi = 0.1;
+	double L = 10;
+	size_t num = (size_t)(L*L);
+	std::vector<double> param_vtilde;
+	std::vector<std::tuple<double,double,double>> shells; // (K1a, deltaa, S0n)
+
+	ofile << "Dimension = "; ifile >> dim;
+	size_t M = 1;
+	ofile << "M (number of shells) = "; ifile >> M;
+	for (size_t n = 0; n < M; n++) {
+		double K1n, deltan, S0n;
+		ofile << "K1a[" << n << "] = "; ifile >> K1n;
+		ofile << "delta_a[" << n << "] = "; ifile >> deltan;
+		ofile << "S0[" << n << "] = "; ifile >> S0n;
+		shells.emplace_back(K1n, deltan, S0n);
+	}
+	ofile << "val = ";    ifile >> val;
+	ofile << "sigma = ";  ifile >> sigma;
+	ofile << "phi = ";    ifile >> phi;
+
+	int num_threads = 4;
+	ofile << "# threads = "; ifile >> num_threads;
+	ofile << "num particles = "; ifile >> num;
+
+	L = pow((double)num, 1.0/dim);
+	double a = pow(phi / HyperSphere_Volume(dim, 1.0), 1.0/dim);
+
+	// ---- 2. Minimization parameters ----
+	size_t max_steps = 10000;
+	double tolerance = 1e-14;
+	size_t N_trial   = 100;
+	double Rf_start  = 1.0;
+	std::string savename;
+
+	ofile << "Save as "; ifile >> savename;
+	ofile << "Rf_start = "; ifile >> Rf_start;
+	ofile << "N_trial = ";  ifile >> N_trial;
+	ofile << "max_steps = "; ifile >> max_steps;
+
+	// ---- 3. Build initial config ----
+	Configuration pConfig = GetUnitCubicBox(dim, 0.1);
+	pConfig.Rescale(L);
+	for (size_t i = 0; i < num; i++)
+		pConfig.Insert("a", rngGod);
+	pConfig.PrepareIterateThroughNeighbors(sigma);
+
+	// ---- 4. Build MultiShellS0Potential ----
+	std::vector<std::tuple<double,double,double>> shells_abs;
+	double k2_max = 0.0;
+	for (size_t n = 0; n < M; n++) {
+		double k1n = std::get<0>(shells[n]) / a;
+		double k2n = k1n + std::get<1>(shells[n]) / a;
+		double S0n = std::get<2>(shells[n]);
+		shells_abs.emplace_back(k1n, k2n, S0n);
+		k2_max = std::max(k2_max, k2n);
+		ofile << "Shell " << n << ": k1=" << k1n << " k2=" << k2n << " S0=" << S0n << "\n";
+	}
+
+	MultiShellS0Potential * phi_s = new MultiShellS0Potential(dim, val, sigma);
+	phi_s->ParallelNumThread = num_threads;
+	phi_s->CCPotential1->ParallelNumThread = num_threads;
+	phi_s->CCPotential2->ParallelNumThread = num_threads;
+
+	std::function<double(double)> v;
+	if (vtilde.compare("flat") == 0) {
+		v = [](double k) -> double { return 1.0; };
+	} else if (vtilde.compare("overlap") == 0) {
+		param_vtilde.emplace_back(k2_max);
+		v = [&dim, &param_vtilde](double k) -> double { return alpha(dim, k/param_vtilde[0]); };
+	} else if (vtilde.compare("power-law") == 0) {
+		double m;
+		ofile << "power-law exponent = "; ifile >> m;
+		param_vtilde.emplace_back(k2_max);
+		param_vtilde.emplace_back(m);
+		v = [&param_vtilde](double k) -> double { return std::pow(1. - k/param_vtilde[0], param_vtilde[1]); };
+	}
+
+	{
+		std::vector<GeometryVector> ks_temp = GetKs(pConfig, k2_max, k2_max, 1);
+		for (auto & k : ks_temp) {
+			double km2 = k.Modulus2();
+			for (auto & s : shells_abs) {
+				double k1n = std::get<0>(s), k2n = std::get<1>(s), S0n = std::get<2>(s);
+				if (km2 > k1n*k1n && km2 <= k2n*k2n) {
+					if (S0n == 0.0) {
+						std::vector<double> vals = {v(std::sqrt(km2))};
+						phi_s->CCPotential1->AddConstraint(k, vals);
+					} else {
+						std::vector<double> vals = {1.0, S0n};
+						phi_s->CCPotential2->AddConstraint(k, vals);
+					}
+					break;
+				}
+			}
+		}
+	}
+
+	double rho = num / pConfig.PeriodicVolume();
+	ofile << "rho = " << rho << "\n";
+
+	// ---- 5. Build combined potential ----
+	ExclusionFieldPotential * phi_ex = new ExclusionFieldPotential(dim, Rf_start);
+	HoleBiasedPotential combined(phi_s, phi_ex);
+	combined.SetConfiguration(pConfig);
+
+	double Rf_step = 0.1 / k2_max;
+	ofile << "Rf_step = " << Rf_step << " (= 0.1/k2_max)\n";
+	ofile << "N_trial = " << N_trial << " per Rf value\n";
+	ofile << "max_steps = " << max_steps << " per trial\n";
+	ofile << "tolerance = " << tolerance << "\n";
+
+	// ---- 6. Output file ----
+	std::ofstream rcfile("Rc_biased.dat");
+	rcfile << "# k1\tk2\tchi_gen\tR_c\tR_c*k2_max\n";
+
+	ConfigurationPack SuccessPack(savename + "_hole_Success");
+
+	// ---- 7. R_f sweep ----
+	double Rf = Rf_start;
+	double Rc  = Rf_start - Rf_step;
+
+	while (true) {
+		phi_ex->set_Rf(Rf);
+		ofile << "\n--- Rf = " << Rf << " ---\n";
+		bool found = false;
+
+		for (size_t trial = 0; trial < N_trial; trial++) {
+			Configuration result(pConfig);
+			combined.SetConfiguration(result);
+			RelaxStructure_NLOPT(result, combined, 0.0, 0, 0.0, max_steps);
+			combined.SetConfiguration(result);
+			double E_s  = combined.EnergyS();
+			double E_ex = combined.EnergyEx();
+
+			if (Verbosity > 2)
+				ofile << "  trial " << trial << ": E_s=" << E_s << " E_ex=" << E_ex << "\n";
+
+			if (E_s < tolerance && E_ex < tolerance) {
+				found = true;
+				SuccessPack.AddConfig(result);
+				ofile << "  SUCCESS at trial " << trial
+				      << "  (E_s=" << E_s << " E_ex=" << E_ex << ")\n";
+				break;
+			}
+
+			// randomize for next trial
+			for (size_t n = 0; n < num; n++) {
+				GeometryVector temp(static_cast<int>(dim));
+				for (DimensionType j = 0; j < dim; j++)
+					temp.x[j] = rngGod.RandomDouble();
+				pConfig.MoveParticle(n, temp);
+			}
+		}
+
+		if (!found) {
+			Rc = Rf - Rf_step;
+			ofile << "No success at Rf=" << Rf << ". Sweep terminated. R_c = " << Rc << "\n";
+			for (size_t n = 0; n < M; n++) {
+				double k1n = std::get<0>(shells_abs[n]);
+				double k2n = std::get<1>(shells_abs[n]);
+				constexpr double pi = 3.14159265358979323846;
+			double chi_gen = (k2n*k2n - k1n*k1n) / (8.0 * pi * rho);
+				rcfile << k1n << "\t" << k2n << "\t" << chi_gen << "\t"
+				       << Rc  << "\t" << Rc * k2_max << "\n";
+			}
+			break;
+		}
+
+		ofile << "Rf=" << Rf << " achievable. Proceeding.\n";
+		Rf += Rf_step;
+
+		if (std::time(nullptr) > TimeLimit) {
+			ofile << "Time limit reached during sweep at Rf=" << Rf << "\n";
+			break;
+		}
+	}
+
+	rcfile.close();
+	delete phi_s;
+	delete phi_ex;
+	return 0;
+}
+
 
 int main(int argc, char ** argv){
 	char tempstring[1000] = {};
@@ -1496,6 +1711,9 @@ int main(int argc, char ** argv){
 
 	if (argc > 1 && strcmp(argv[1], "multi") == 0){
 		GetMultiCCO(argc, argv);
+	}
+	else if (argc > 1 && strcmp(argv[1], "hole") == 0){
+		GetHoleCCO(argc, argv);
 	}
 	else
 	{
