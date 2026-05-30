@@ -45,9 +45,9 @@ timelimit=20                   # simulation time limit in hours
 N=400                          # number of particles
 
 # Hole sweep parameters
-Rf_start=0.5                   # initial exclusion radius (physical units)
+Rf_start=0.1                   # initial exclusion radius (physical units)
 delta_Rf=0.01                  # R_f step size (physical units)
-N_trial=100                    # L-BFGS trials per R_f value
+N_trial=500                    # L-BFGS trials per R_f value
 max_steps=100000               # L-BFGS steps per trial
 
 # --------------------------------

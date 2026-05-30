@@ -37,6 +37,11 @@ size_t Verbosity = 3;
 #include "ExclusionFieldPotential.h"
 #include "HoleBiasedPotential.h"
 
+#include <highfive/H5File.hpp>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+#include <highfive/H5Attribute.hpp>
+
 /** \brief Perform the energy optimization multiple times for a given potential energy.
 Obtain ground-state configurations from multi initial configurations.
 @param[in]	pConfig	A pointer of a point configuration.
@@ -1635,7 +1640,8 @@ int GetHoleCCO(int argc, char ** argv)
 	std::ofstream rcfile("Rc_biased.dat");
 	rcfile << "# k1\tk2\tchi_gen\tR_c\tR_c*k2_max\n";
 
-	ConfigurationPack SuccessPack(savename + "_hole_Success");
+	std::vector<Configuration> success_configs;
+	std::vector<double>        Rf_vals;
 
 	// ---- 7. R_f sweep ----
 	double Rf = Rf_start;
@@ -1659,7 +1665,8 @@ int GetHoleCCO(int argc, char ** argv)
 
 			if (E_s < tolerance && E_ex < tolerance) {
 				found = true;
-				SuccessPack.AddConfig(result);
+				success_configs.push_back(result);
+				Rf_vals.push_back(Rf);
 				ofile << "  SUCCESS at trial " << trial
 				      << "  (E_s=" << E_s << " E_ex=" << E_ex << ")\n";
 				break;
@@ -1681,7 +1688,7 @@ int GetHoleCCO(int argc, char ** argv)
 				double k1n = std::get<0>(shells_abs[n]);
 				double k2n = std::get<1>(shells_abs[n]);
 				constexpr double pi = 3.14159265358979323846;
-			double chi_gen = (k2n*k2n - k1n*k1n) / (8.0 * pi * rho);
+			double chi_gen = (k2n*k2n - k1n*k1n) / (16.0 * pi * rho);
 				rcfile << k1n << "\t" << k2n << "\t" << chi_gen << "\t"
 				       << Rc  << "\t" << Rc * k2_max << "\n";
 			}
@@ -1698,6 +1705,60 @@ int GetHoleCCO(int argc, char ** argv)
 	}
 
 	rcfile.close();
+
+	// ---- 8. Write HDF5 output ----
+	if (!success_configs.empty()) {
+		constexpr double pi_h5 = 3.14159265358979323846;
+		const std::string h5name = savename + "_hole_Success.h5";
+		size_t n_configs = success_configs.size();
+		size_t N_p       = success_configs[0].NumParticle();
+
+		// basis as (dim, dim) nested vector
+		std::vector<std::vector<double>> basis_out(dim, std::vector<double>(dim));
+		for (DimensionType i = 0; i < dim; i++) {
+			GeometryVector bv = success_configs[0].GetBasisVector(i);
+			for (DimensionType j = 0; j < dim; j++)
+				basis_out[i][j] = bv.x[j];
+		}
+
+		// shell parameter vectors
+		std::vector<double> sk1(M), sk2(M), sS0(M), schi(M);
+		for (size_t n = 0; n < M; n++) {
+			sk1[n]  = std::get<0>(shells_abs[n]);
+			sk2[n]  = std::get<1>(shells_abs[n]);
+			sS0[n]  = std::get<2>(shells_abs[n]);
+			schi[n] = (sk2[n]*sk2[n] - sk1[n]*sk1[n]) / (16.0 * pi_h5 * rho);
+		}
+
+		HighFive::File h5file(h5name, HighFive::File::Truncate);
+
+		h5file.createAttribute("dim",      (int)dim);
+		h5file.createAttribute("N",        (int)N_p);
+		h5file.createAttribute("n_configs",(int)n_configs);
+		h5file.createAttribute("n_shells", (int)M);
+		h5file.createAttribute("Rc",       Rc);
+		h5file.createAttribute("basis",    basis_out);
+
+		h5file.createDataSet("shells_k1",      sk1);
+		h5file.createDataSet("shells_k2",      sk2);
+		h5file.createDataSet("shells_S0",      sS0);
+		h5file.createDataSet("shells_chi_gen", schi);
+
+		for (size_t ci = 0; ci < n_configs; ci++) {
+			std::vector<std::vector<double>> pos(N_p, std::vector<double>(dim));
+			for (size_t i = 0; i < N_p; i++) {
+				GeometryVector r = success_configs[ci].GetCartesianCoordinates(i);
+				for (DimensionType j = 0; j < dim; j++)
+					pos[i][j] = r.x[j];
+			}
+			auto ds = h5file.createDataSet("config_" + std::to_string(ci), pos);
+			ds.createAttribute("Rf", Rf_vals[ci]);
+		}
+
+		ofile << "HDF5 output written to " << h5name
+		      << "  (" << n_configs << " configs)\n";
+	}
+
 	delete phi_s;
 	delete phi_ex;
 	return 0;
