@@ -22,12 +22,14 @@ NLOPT_PREFIX    := $(shell spack location -i nlopt 2>/dev/null || echo /usr/loca
 BOOST_PREFIX    := $(shell spack location -i boost)
 HDF5_PREFIX     := $(shell spack location -i hdf5)
 HIGHFIVE_PREFIX := $(shell spack location -i highfive)
+MPI_PREFIX      := $(shell spack location -i openmpi)
 
 IDIR = -I$(GSL_PREFIX)/include \
        -I$(NLOPT_PREFIX)/include \
        -I$(BOOST_PREFIX)/include \
        -I$(HDF5_PREFIX)/include \
        -I$(HIGHFIVE_PREFIX)/include \
+       -I$(MPI_PREFIX)/include \
        -I$(core) -I$(pair) -I$(pot)
 
 GSLLIB   = -L$(GSL_PREFIX)/lib   -lgsl -lgslcblas -Wl,-rpath,$(GSL_PREFIX)/lib
