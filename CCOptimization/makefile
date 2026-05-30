@@ -47,7 +47,7 @@ TARGET = $(EXEdir)CCO.out
 #==============================
 CC = g++
 DEBUG = -g
-CFLAGS = -Wall -Wno-reorder -std=c++14 $(DEBUG) $(IDIR) -c -fopenmp -O3
+CFLAGS = -Wall -Wno-reorder -std=c++14 $(DEBUG) $(IDIR) -c -fopenmp -O3 -DHIGHFIVE_USE_MPI=0
 LFLAGS = -Wall -Wno-reorder -std=c++14 $(DEBUG) $(LIBS) -fopenmp -O3
 
 $(info	$(CFLAGS))
