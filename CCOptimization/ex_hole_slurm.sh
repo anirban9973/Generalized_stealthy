@@ -31,6 +31,8 @@ d=2                            # space dimension
 # chi0 and chi_gen are read from params.dat (line 1: chi0, line 2: chi_gen)
 chi0=`awk 'NR==1' params.dat`
 chi_gen=`awk 'NR==2' params.dat`
+Rf_start=`awk 'NR==3' params.dat`
+Rf_start=${Rf_start:-0.1}          # fallback if line 3 is absent
 
 M=1                            # number of shells
 S0s=(0.0)                      # stealthy (S0 = 0)
@@ -45,7 +47,7 @@ timelimit=20                   # simulation time limit in hours
 N=400                          # number of particles
 
 # Hole sweep parameters
-Rf_start=0.1                   # initial exclusion radius (physical units)
+# Rf_start is read from params.dat line 3 (set by setup_hole_runs.py)
 delta_Rf=0.01                  # R_f step size (physical units)
 N_trial=500                    # L-BFGS trials per R_f value
 max_steps=100000               # L-BFGS steps per trial
