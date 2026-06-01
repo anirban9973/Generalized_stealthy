@@ -17,18 +17,25 @@ pair = ../PairStat/
 pot  = ../Potential/
 
 #----- Locate packages via spack -----
-GSL_PREFIX   := $(shell spack location -i gsl)
-NLOPT_PREFIX := $(shell spack location -i nlopt 2>/dev/null || echo /usr/local)
-BOOST_PREFIX := $(shell spack location -i boost)
+GSL_PREFIX      := $(shell spack location -i gsl)
+NLOPT_PREFIX    := $(shell spack location -i nlopt 2>/dev/null || echo /usr/local)
+BOOST_PREFIX    := $(shell spack location -i boost)
+HDF5_PREFIX     := $(shell spack location -i hdf5)
+HIGHFIVE_PREFIX := $(shell spack location -i highfive)
+MPI_PREFIX      := $(shell spack location -i openmpi)
 
 IDIR = -I$(GSL_PREFIX)/include \
        -I$(NLOPT_PREFIX)/include \
        -I$(BOOST_PREFIX)/include \
+       -I$(HDF5_PREFIX)/include \
+       -I$(HIGHFIVE_PREFIX)/include \
+       -I$(MPI_PREFIX)/include \
        -I$(core) -I$(pair) -I$(pot)
 
-GSLLIB  = -L$(GSL_PREFIX)/lib -lgsl -lgslcblas -Wl,-rpath,$(GSL_PREFIX)/lib
-NLOPTLIB = -L$(NLOPT_PREFIX)/lib -lnlopt -Wl,-rpath,$(NLOPT_PREFIX)/lib
-LIBS = -lm $(GSLLIB) $(NLOPTLIB)
+GSLLIB   = -L$(GSL_PREFIX)/lib   -lgsl -lgslcblas -Wl,-rpath,$(GSL_PREFIX)/lib
+NLOPTLIB = -L$(NLOPT_PREFIX)/lib -lnlopt            -Wl,-rpath,$(NLOPT_PREFIX)/lib
+HDF5LIB  = -L$(HDF5_PREFIX)/lib  -lhdf5             -Wl,-rpath,$(HDF5_PREFIX)/lib
+LIBS = -lm $(GSLLIB) $(NLOPTLIB) $(HDF5LIB)
 
 PREPRO =
 

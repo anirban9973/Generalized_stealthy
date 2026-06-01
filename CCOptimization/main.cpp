@@ -35,6 +35,11 @@ size_t Verbosity = 3;
 #include "MultiStealthyPotential.h"
 #include "MultiShellS0Potential.h"
 
+#include <highfive/H5File.hpp>
+#include <highfive/H5DataSet.hpp>
+#include <highfive/H5DataSpace.hpp>
+#include <highfive/H5Attribute.hpp>
+
 /** \brief Perform the energy optimization multiple times for a given potential energy.
 Obtain ground-state configurations from multi initial configurations.
 @param[in]	pConfig	A pointer of a point configuration.
@@ -451,6 +456,58 @@ int GetCCO(int argc, char ** argv){
 				ofile << "max_eval = " << max_steps << std::endl;
 				CollectiveCoordinateMultiRun(&pConfig, potential, rngGod, savename, numConfig_comp, TimeLimit, algorithm, tolerance, max_steps);
 				delete potential;
+
+				// Write success configs to HDF5
+				{
+					constexpr double pi_h5 = 3.14159265358979323846;
+					ConfigurationPack h5_pack(savename + "_Success");
+					int n_success = (int)h5_pack.NumConfig();
+					if (n_success > 0) {
+						Configuration first = h5_pack.GetConfig(0);
+						size_t N_p = first.NumParticle();
+
+						std::vector<std::vector<double>> basis_out(dim, std::vector<double>(dim));
+						for (DimensionType bi = 0; bi < dim; bi++) {
+							GeometryVector bv = first.GetBasisVector(bi);
+							for (DimensionType bj = 0; bj < dim; bj++)
+								basis_out[bi][bj] = bv.x[bj];
+						}
+
+						std::vector<double> sk1(M), sk2(M), sS0(M), schi(M);
+						for (size_t n = 0; n < M; n++) {
+							double k1n = std::get<0>(shells[n]) / a;
+							double k2n = k1n + std::get<1>(shells[n]) / a;
+							sk1[n]  = k1n;
+							sk2[n]  = k2n;
+							sS0[n]  = std::get<2>(shells[n]);
+							schi[n] = (k2n*k2n - k1n*k1n) / (16.0 * pi_h5);  // rho=1
+						}
+
+						HighFive::File h5file(savename + "_Success.h5", HighFive::File::Truncate);
+						h5file.createAttribute("dim",       (int)dim);
+						h5file.createAttribute("N",         (int)N_p);
+						h5file.createAttribute("n_configs", n_success);
+						h5file.createAttribute("n_shells",  (int)M);
+						h5file.createAttribute("basis",     basis_out);
+						h5file.createDataSet("shells_k1",      sk1);
+						h5file.createDataSet("shells_k2",      sk2);
+						h5file.createDataSet("shells_S0",      sS0);
+						h5file.createDataSet("shells_chi_gen", schi);
+
+						for (int ci = 0; ci < n_success; ci++) {
+							Configuration cfg = h5_pack.GetConfig(ci);
+							std::vector<std::vector<double>> pos(N_p, std::vector<double>(dim));
+							for (size_t pi_ = 0; pi_ < N_p; pi_++) {
+								GeometryVector r = cfg.GetCartesianCoordinates(pi_);
+								for (DimensionType j = 0; j < dim; j++)
+									pos[pi_][j] = r.x[j];
+							}
+							h5file.createDataSet("config_" + std::to_string(ci), pos);
+						}
+						ofile << "HDF5 output written to " << savename << "_Success.h5"
+						      << "  (" << n_success << " configs)\n";
+					}
+				}
 
 			}
 			else if	(strcmp (tempstring, "input") == 0){

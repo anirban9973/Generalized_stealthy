@@ -3,7 +3,7 @@
 #SBATCH --array=1-10               # array indices; each index = one independent run
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=4          # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
-#SBATCH --time=04:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
+#SBATCH --time=01:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
 #SBATCH --mem=4G                   # memory per task
 #SBATCH --output=logs/%x_%A_%a.out # stdout: jobname_arrayjobid_taskid.out
 #SBATCH --error=logs/%x_%A_%a.err  # stderr
@@ -26,52 +26,68 @@ Verbosity=3
 fname=GS_run${SLURM_ARRAY_TASK_ID}   # unique output prefix per array task
 
 # --------------------------------
-# 2. Parameters of pair potential.
+# 2. Shell potential parameters
 # --------------------------------
 d=2                            # space dimension
 
-# Generalized stealthy: M annular shells, each defined by (K1, delta) in unit number density.
-# S(k) = 0 for k in union of [K1^(n), K1^(n) + delta^(n)], n = 1..M.
-# To use a single standard stealthy shell: set M=1, K1s=(0.0), deltas=(your_delta).
-M=2                            # number of shells
-K1s=(0.0  0.5)                 # lower bounds k1^(n) per shell (unit number density)
-deltas=(0.3  0.2)              # widths delta^(n) per shell (unit number density)
-S0s=(0.0  0.0)                 # S0 per shell: 0.0 = stealthy, >0 = equiluminous
-vareps0=0.0                    # relative strength of the soft-core repulsion. (0 means no soft-core repulsions.)
-phi_fake=0.15                  # (Do not touch) fictitious packing fraction
-sigma=0.20                     # exclusion radius of soft-core repulsion (unit number density)
+# Single annular stealthy shell: S(k) = 0 for |k| in [k1, k1+delta]
+# k1    = 2*sqrt(pi) * (chi_gen - chi0) / sqrt(chi0)   (unit number density)
+# delta = 4*sqrt(pi * chi0)                             (unit number density)
+# k2    = k1 + delta
+# chi0 and chi_gen are read from params.dat (line 1: chi0, line 2: chi_gen)
+chi0=`awk 'NR==1' params.dat`
+chi_gen=`awk 'NR==2' params.dat`
+
+M=1                            # number of shells
+S0s=(0.0)                      # stealthy (S0 = 0)
+vareps0=0.0                    # soft-core repulsion strength (0 = off)
+phi_fake=0.15                  # fictitious packing fraction (do not touch)
+sigma=0.20                     # soft-core exclusion radius (unit number density)
 
 # --------------------------------
 # 3. Computational parameters
 # --------------------------------
-timelimit=1                    # simulation time limit in hours 
-N=4000                          # number of particles
-Nc=1                          # number of configurations per array task
+timelimit=1                    # simulation time limit in hours
+N=1600                         # number of particles
+Nc=10                          # number of configurations per array task
 
 # Minimization parameters
 eps0="tolerance 1e-16"
 max_eval="maxsteps 100000"
 algorithm="algorithm LBFGS"
 
-# ------------- do not touch ---------
+# --------------------------------
+# 4. Derived quantities (do not touch)
+# --------------------------------
 pi=`echo "4*a(1)" | bc -l`
 if [ "$d" == 1 ]; then
-v=2.0
+    v=2.0
 elif [ "$d" == 2 ]; then
-v=${pi}
+    v=${pi}
 elif [ "$d" == 3 ]; then
-v=`echo "4.*${pi}/3."| bc -l`
+    v=`echo "4.*${pi}/3." | bc -l`
 fi
 a=`echo "e(l(${phi_fake}/${v})/${d})" | bc -l`
 
-# Build shell string: "M  K1a_0 deltaa_0 S0_0  K1a_1 deltaa_1 S0_1 ..."
+# k1 = 2*sqrt(pi) * (chi_gen - chi0) / sqrt(chi0)
+# delta = 4*sqrt(pi*chi0)
+k1=`echo "2*sqrt(${pi})*(${chi_gen}-${chi0})/sqrt(${chi0})" | bc -l`
+delta=`echo "4*sqrt(${pi}*${chi0})" | bc -l`
+K1s=(${k1})
+deltas=(${delta})
+
+echo "chi_gen       : ${chi_gen}"
+echo "chi0          : ${chi0}"
+echo "k1 (unit rho) : ${k1}"
+echo "delta (unit rho): ${delta}"
+
+# Build shell string: "M  K1a_0 deltaa_0 S0_0 ..."
 shell_str="${M}"
 for (( n=0; n<M; n++ )); do
     K1a=`echo "${K1s[$n]}*${a}"       | bc -l`
     deltaa=`echo "${deltas[$n]}*${a}" | bc -l`
     shell_str="${shell_str} ${K1a} ${deltaa} ${S0s[$n]}"
 done
-# ------------------------------------
 
 exe=./CCO.out
 
@@ -79,6 +95,7 @@ echo "Array task ID : ${SLURM_ARRAY_TASK_ID}"
 echo "Seed          : ${seed}"
 echo "Threads       : ${threads}"
 echo "Save prefix   : ${fname}_GS"
+echo "N             : ${N}"
 
 time_start=$(date +%s)
 
