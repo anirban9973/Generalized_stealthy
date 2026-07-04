@@ -2,8 +2,8 @@
 #SBATCH --job-name=CCO_ground
 #SBATCH --array=1-10               # array indices; each index = one independent run
 #SBATCH --ntasks=1                 # one process per array task
-#SBATCH --cpus-per-task=4          # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
-#SBATCH --time=01:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
+#SBATCH --cpus-per-task=20         # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
+#SBATCH --time=20:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
 #SBATCH --mem=4G                   # memory per task
 #SBATCH --output=logs/%x_%A_%a.out # stdout: jobname_arrayjobid_taskid.out
 #SBATCH --error=logs/%x_%A_%a.err  # stderr
@@ -22,7 +22,7 @@ threads=${SLURM_CPUS_PER_TASK}
 
 # each array task writes to its own save file to avoid conflicts
 beg_idx=0
-Verbosity=3
+Verbosity=10
 fname=GS_run${SLURM_ARRAY_TASK_ID}   # unique output prefix per array task
 
 # --------------------------------
@@ -47,13 +47,13 @@ sigma=0.20                     # soft-core exclusion radius (unit number density
 # --------------------------------
 # 3. Computational parameters
 # --------------------------------
-timelimit=1                    # simulation time limit in hours
+timelimit=20                   # simulation time limit in hours
 N=1600                         # number of particles
-Nc=10                          # number of configurations per array task
+Nc=1                           # number of configurations per array task
 
 # Minimization parameters
 eps0="tolerance 1e-16"
-max_eval="maxsteps 100000"
+max_eval="maxsteps 1000000"
 algorithm="algorithm LBFGS"
 
 # --------------------------------
