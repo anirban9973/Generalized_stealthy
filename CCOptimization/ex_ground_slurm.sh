@@ -48,7 +48,7 @@ sigma=0.20                     # soft-core exclusion radius (unit number density
 # 3. Computational parameters
 # --------------------------------
 timelimit=20                   # simulation time limit in hours
-N=1600                         # number of particles
+N=2500                         # number of particles
 Nc=100000                      # large number; time limit is the actual stopper
 
 # Minimization parameters
