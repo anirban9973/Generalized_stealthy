@@ -49,7 +49,7 @@ sigma=0.20                     # soft-core exclusion radius (unit number density
 # --------------------------------
 timelimit=20                   # simulation time limit in hours
 N=1600                         # number of particles
-Nc=1                           # number of configurations per array task
+Nc=100000                      # large number; time limit is the actual stopper
 
 # Minimization parameters
 eps0="tolerance 1e-16"
