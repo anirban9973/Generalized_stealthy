@@ -53,7 +53,7 @@ Nc=1                           # number of configurations per array task
 
 # Minimization parameters
 eps0="tolerance 1e-16"
-max_eval="maxsteps 1000000"
+max_eval="maxsteps 10000000"
 algorithm="algorithm LBFGS"
 
 # --------------------------------
