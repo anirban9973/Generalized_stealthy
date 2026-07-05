@@ -1544,6 +1544,126 @@ int GetMultiCCO(int argc, char ** argv){
 
 
 
+/** \brief Crystalline stealthy ground states (chi > 1/2) in a commensurate rhombic cell.
+ *
+ * Steps implemented so far:
+ *   [1] rhombic (triangular) box with N particles per side (Nx = Ny = N) at rho = 1;
+ *   [2] initial-condition generator: a FRESH perturbed triangular lattice each call
+ *       (perfect lattice + Gaussian displacement of std sigma_pert*a). Nc sets how many
+ *       such initial conditions we will hand to the (unchanged) optimizer.
+ * The optimization loop itself is NOT reimplemented here; a later step feeds these
+ * initial conditions to the existing minimization routine.
+ *
+ * Invoked as:  ./CCO.out crystal [timelimit_hr] [seed] [verbosity]
+ * stdin order: N  Nc  sigma_pert
+ */
+int GetCrystalCCO(int argc, char ** argv)
+{
+	std::istream & ifile = std::cin;
+	std::ostream & ofile = std::cout;
+
+	int seed = 0;
+	if (argc > 3) seed = std::atoi(argv[3]);
+	if (argc > 4) Verbosity = (size_t)std::atoi(argv[4]);
+
+	RandomGenerator rng(seed);
+	constexpr double pi = 3.14159265358979323846;
+	const DimensionType dim = 2;
+
+	// ---- 1. Read parameters ----
+	size_t N = 50;              // particles per side (Nx = Ny = N)
+	size_t Nc = 100;            // number of perturbed-lattice initial conditions (attempts)
+	double sigma_pert = 0.03;   // perturbation std, in units of the lattice constant a
+	ofile << "N (particles per side, Nx=Ny=N) = "; ifile >> N;
+	ofile << "Nc (number of attempts) = ";         ifile >> Nc;
+	ofile << "sigma_pert (units of a) = ";         ifile >> sigma_pert;
+	size_t num = N * N;
+
+	// ---- 2. Rhombic box at unit number density (rho = 1) ----
+	// Triangular lattice: a1 = a*(1,0), a2 = a*(1/2, sqrt(3)/2); area per particle
+	// = (sqrt(3)/2) a^2 = 1  =>  a = sqrt(2/sqrt(3)).  Box = N*a1, N*a2.
+	double a_lat = std::sqrt(2.0 / std::sqrt(3.0));
+	GeometryVector A1(static_cast<int>(dim)), A2(static_cast<int>(dim));
+	A1.x[0] = N * a_lat;         A1.x[1] = 0.0;
+	A2.x[0] = N * a_lat * 0.5;   A2.x[1] = N * a_lat * std::sqrt(3.0) / 2.0;
+	GeometryVector basis[2] = {A1, A2};
+
+	Configuration lattice(dim, basis, a_lat);
+	// perfect triangular lattice: one particle per (i/N, j/N) site
+	for (size_t i = 0; i < N; i++)
+		for (size_t j = 0; j < N; j++) {
+			GeometryVector rel(static_cast<int>(dim));
+			rel.x[0] = (double)i / (double)N;
+			rel.x[1] = (double)j / (double)N;
+			lattice.Insert("a", rel);
+		}
+
+	double rho    = num / lattice.PeriodicVolume();
+	double k_bragg = 4.0 * pi / (a_lat * std::sqrt(3.0));
+
+	// ---- 3. Report geometry for verification ----
+	ofile << "\n===== [1] Rhombic box & triangular lattice =====\n";
+	ofile << "  N per side    = " << N << "   (N_particles = " << num << ")\n";
+	ofile << "  a (lattice)   = " << a_lat << "\n";
+	ofile << "  Box A1        = (" << A1.x[0] << ", " << A1.x[1] << ")\n";
+	ofile << "  Box A2        = (" << A2.x[0] << ", " << A2.x[1] << ")\n";
+	ofile << "  Box area      = " << lattice.PeriodicVolume() << "\n";
+	ofile << "  rho           = " << rho << "   (expect 1)\n";
+	ofile << "  k_Bragg       = " << k_bragg << "\n";
+	{
+		double rmin = 1e30;
+		lattice.PrepareIterateThroughNeighbors(1.5 * a_lat);
+		lattice.IterateThroughNeighbors(lattice.GetRelativeCoordinates(0), 1.5 * a_lat,
+			[&rmin](const GeometryVector & shift, const GeometryVector &, const signed long *, size_t)->void {
+				double r2 = shift.Modulus2();
+				if (r2 > 1e-12 && r2 < rmin * rmin) rmin = std::sqrt(r2);
+			});
+		ofile << "  NN distance   = " << rmin
+		      << "   (expect a = " << a_lat << ")  "
+		      << (std::abs(rmin - a_lat) < 1e-6 ? "OK" : "MISMATCH!") << "\n";
+	}
+
+	// ---- 4. Initial-condition generator: fresh perturbed triangular lattice ----
+	// Displacing a relative coordinate by srel moves the particle by srel*|A_i| = srel*N*a
+	// in Cartesian; choosing srel = sigma_pert / N gives a Cartesian std of sigma_pert*a.
+	double srel = sigma_pert / (double)N;
+	auto make_perturbed_lattice = [&](void) -> Configuration {
+		Configuration c(lattice);              // copy of the perfect triangular lattice
+		for (size_t p = 0; p < num; p++) {
+			GeometryVector rel = lattice.GetRelativeCoordinates(p);
+			rel.x[0] += rng.RandomDouble_normal(srel);
+			rel.x[1] += rng.RandomDouble_normal(srel);
+			c.MoveParticle(p, rel);
+		}
+		return c;
+	};
+
+	ofile << "\n===== [2] Perturbed-lattice initial condition =====\n";
+	ofile << "  sigma_pert    = " << sigma_pert << " (units of a); Cartesian std ~ "
+	      << sigma_pert * a_lat << "\n";
+	ofile << "  Nc (attempts) = " << Nc << "\n";
+	// Verify the generator: two fresh draws should differ, with RMS displacement ~ sqrt(2)*sigma_pert*a.
+	// Use minimum-image (wrap the relative-coordinate difference to [-0.5, 0.5]) so particles that
+	// wrapped across a periodic boundary are measured correctly.
+	for (int t = 0; t < 2; t++) {
+		Configuration c = make_perturbed_lattice();
+		double sumd2 = 0.0;
+		for (size_t p = 0; p < num; p++) {
+			GeometryVector r0 = lattice.GetRelativeCoordinates(p);
+			GeometryVector r1 = c.GetRelativeCoordinates(p);
+			double d0 = r1.x[0] - r0.x[0];  d0 -= std::round(d0);
+			double d1 = r1.x[1] - r0.x[1];  d1 -= std::round(d1);
+			GeometryVector d = A1 * d0 + A2 * d1;   // back to Cartesian
+			sumd2 += d.Modulus2();
+		}
+		ofile << "  draw " << t << ": RMS displacement = " << std::sqrt(sumd2 / num)
+		      << "  (expect ~ " << std::sqrt(2.0) * sigma_pert * a_lat << ")\n";
+	}
+
+	return 0;
+}
+
+
 int main(int argc, char ** argv){
 	char tempstring[1000] = {};
 	char tempstring2[300] = {};
@@ -1553,6 +1673,9 @@ int main(int argc, char ** argv){
 
 	if (argc > 1 && strcmp(argv[1], "multi") == 0){
 		GetMultiCCO(argc, argv);
+	}
+	else if (argc > 1 && strcmp(argv[1], "crystal") == 0){
+		GetCrystalCCO(argc, argv);
 	}
 	else
 	{
