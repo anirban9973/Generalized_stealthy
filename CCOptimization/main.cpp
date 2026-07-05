@@ -1629,11 +1629,29 @@ int GetCrystalCCO(int argc, char ** argv)
 		}
 	double rho = num / lattice.PeriodicVolume();
 	double k_bragg = 4.0 * pi / (a_lat * std::sqrt(3.0));
-	ofile << "N = " << num << ", a = " << a_lat << ", rho = " << rho << "\n";
-	ofile << "K = " << K << ", k_Bragg = " << k_bragg
-	      << " (K/k_Bragg = " << K / k_bragg << ")\n";
-	if (K >= k_bragg)
-		ofile << "WARNING: K >= k_Bragg; triangular lattice is not a Phi=0 ground state!\n";
+
+	ofile << "\n===== [1] Rhombic box & triangular lattice setup =====\n";
+	ofile << "  Box A1 = (" << A1.x[0] << ", " << A1.x[1] << ")\n";
+	ofile << "  Box A2 = (" << A2.x[0] << ", " << A2.x[1] << ")\n";
+	ofile << "  Box area = " << lattice.PeriodicVolume()
+	      << ",  N = " << num << ",  rho = " << rho << "  (expect rho = 1)\n";
+	ofile << "  Lattice constant a = " << a_lat << "\n";
+	{
+		// nearest-neighbor distance of the perfect lattice (should equal a)
+		double rmin = 1e30;
+		lattice.PrepareIterateThroughNeighbors(1.5 * a_lat);
+		lattice.IterateThroughNeighbors(lattice.GetRelativeCoordinates(0), 1.5 * a_lat,
+			[&rmin](const GeometryVector & shift, const GeometryVector &, const signed long *, size_t)->void {
+				double r2 = shift.Modulus2();
+				if (r2 > 1e-12 && r2 < rmin * rmin) rmin = std::sqrt(r2);
+			});
+		ofile << "  Nearest-neighbor distance = " << rmin
+		      << "  (expect a = " << a_lat << ")  "
+		      << (std::abs(rmin - a_lat) < 1e-6 ? "OK" : "MISMATCH!") << "\n";
+	}
+	ofile << "  K = " << K << ",  k_Bragg = " << k_bragg
+	      << ",  K/k_Bragg = " << K / k_bragg
+	      << (K < k_bragg ? "   (OK, below Bragg)" : "   WARNING: K >= k_Bragg!") << "\n";
 
 	// ---- 3. Build single-shell stealthy potential [0, K], S0 = 0 ----
 	MultiShellS0Potential * potential = new MultiShellS0Potential(dim, val, sigma);
@@ -1651,14 +1669,29 @@ int GetCrystalCCO(int argc, char ** argv)
 		}
 	}
 	chi /= dim * (num - 1);
-	ofile << "Number of constrained modes = " << potential->CCPotential1->constraints.size() << "\n";
-	ofile << "chi (actual) = " << chi << "\n";
+	ofile << "\n===== [2] Stealthy potential [0, K], S0 = 0 =====\n";
+	ofile << "  Number of constrained modes = " << potential->CCPotential1->constraints.size() << "\n";
+	ofile << "  chi (actual) = " << chi << "\n";
+
+	// ---- Definitive setup check: the PERFECT lattice must give Phi = 0 ----
+	potential->SetConfiguration(lattice);
+	double E_perfect = potential->Energy();
+	ofile << "\n===== [3] Perfect-lattice check (Phi should be ~0) =====\n";
+	ofile << "  Phi(perfect triangular lattice) = " << E_perfect << "\n";
+	if (E_perfect < 1e-16)
+		ofile << "  PASS: perfect lattice is a Phi=0 ground state -> box/lattice/K all consistent.\n";
+	else
+		ofile << "  FAIL: perfect lattice Phi != 0 -> setup problem (commensurability or K). "
+		         "Optimizer cannot help; fix setup.\n";
 
 	// perturbation std in relative coordinates (Cartesian ~ sigma_pert * a)
 	double srel_x = sigma_pert / (double)Nx;
 	double srel_y = sigma_pert / (double)Ny;
-	ofile << "sigma_pert = " << sigma_pert << " (in units of a)\n";
-	ofile << "Target successes Nc = " << Nc << ", max_steps = " << max_steps << "\n";
+	ofile << "\n===== [4] Perturb-relax-accept loop =====\n";
+	ofile << "  sigma_pert = " << sigma_pert << " (units of a); Cartesian displacement ~ "
+	      << sigma_pert * a_lat << "\n";
+	ofile << "  Nc = " << Nc << ",  max_steps = " << max_steps
+	      << ",  accept threshold Phi < 1e-16\n";
 
 	// ---- 4. Open HDF5 output and counter file up front (crash-safe) ----
 	// Static metadata and box come from the perfect lattice; relaxation (Switch=0)
@@ -1707,9 +1740,11 @@ int GetCrystalCCO(int argc, char ** argv)
 			result.MoveParticle(p, rel);
 		}
 
+		potential->SetConfiguration(result);
+		double E_init = potential->Energy();          // Phi of the perturbed lattice
 		RelaxStructure_NLOPT(result, *potential, 0.0, 0, 0.0, max_steps);
 		potential->SetConfiguration(result);
-		double E = potential->Energy();
+		double E = potential->Energy();               // Phi after relaxation
 
 		if (E < 1e-16) {
 			std::vector<std::vector<double>> pos(N_p, std::vector<double>(dim));
@@ -1723,10 +1758,11 @@ int GetCrystalCCO(int argc, char ** argv)
 			nAttr.write((int)n_success);
 			h5file.flush();             // commit this config to disk now
 			write_count(n_success, n_trial);
-			ofile << "  trial " << n_trial << ": SUCCESS (Phi = " << E
-			      << "), collected " << n_success << "/" << Nc << "\n";
+			ofile << "  trial " << n_trial << ": SUCCESS  Phi_init=" << E_init
+			      << " -> Phi_relax=" << E << "  (collected " << n_success << "/" << Nc << ")\n";
 		} else if (Verbosity > 2) {
-			ofile << "  trial " << n_trial << ": rejected (Phi = " << E << ")\n";
+			ofile << "  trial " << n_trial << ": rejected  Phi_init=" << E_init
+			      << " -> Phi_relax=" << E << "\n";
 		}
 
 		if (std::time(nullptr) > TimeLimit) {

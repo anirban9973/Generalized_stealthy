@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=CCO_crystal
-#SBATCH --array=1-10               # array indices; each index = one independent seed
+#SBATCH --array=1                  # QUICK CHECK: single task per chi. Set to 1-10 for the full run.
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=20         # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
 #SBATCH --time=20:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
