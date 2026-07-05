@@ -1562,6 +1562,8 @@ int GetCrystalCCO(int argc, char ** argv)
 {
 	std::istream & ifile = std::cin;
 	std::ostream & ofile = std::cout;
+	std::cout << std::unitbuf;   // flush stdout on every write so output shows up live in
+	                             // the SLURM .out log (otherwise it is block-buffered to file)
 
 	size_t timelimit_hr = 20;
 	int seed = 0;
