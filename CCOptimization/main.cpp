@@ -1660,10 +1660,44 @@ int GetCrystalCCO(int argc, char ** argv)
 	ofile << "sigma_pert = " << sigma_pert << " (in units of a)\n";
 	ofile << "Target successes Nc = " << Nc << ", max_steps = " << max_steps << "\n";
 
-	// ---- 4. Perturb-relax-accept loop ----
-	std::vector<Configuration> success_configs;
-	size_t n_trial = 0;
-	while (success_configs.size() < Nc) {
+	// ---- 4. Open HDF5 output and counter file up front (crash-safe) ----
+	// Static metadata and box come from the perfect lattice; relaxation (Switch=0)
+	// only moves particles, so the basis is identical for every accepted config.
+	size_t N_p = lattice.NumParticle();
+	std::vector<std::vector<double>> basis_out(dim, std::vector<double>(dim));
+	for (DimensionType bi = 0; bi < dim; bi++) {
+		GeometryVector bv = lattice.GetBasisVector(bi);
+		for (DimensionType bj = 0; bj < dim; bj++)
+			basis_out[bi][bj] = bv.x[bj];
+	}
+
+	std::string h5name    = savename + "_crystal.h5";
+	std::string countname = savename + "_nsuccess.dat";
+
+	HighFive::File h5file(h5name, HighFive::File::Truncate);
+	h5file.createAttribute("dim",        (int)dim);
+	h5file.createAttribute("N",          (int)N_p);
+	h5file.createAttribute("Nx",         (int)Nx);
+	h5file.createAttribute("Ny",         (int)Ny);
+	h5file.createAttribute("K",          K);
+	h5file.createAttribute("chi",        chi);
+	h5file.createAttribute("sigma_pert", sigma_pert);
+	h5file.createAttribute("basis",      basis_out);
+	// n_configs is updated after every accepted config so a killed job stays consistent
+	HighFive::Attribute nAttr = h5file.createAttribute("n_configs", (int)0);
+	h5file.flush();
+
+	auto write_count = [&](size_t n_success, size_t n_trial) {
+		std::ofstream cf(countname, std::ios::trunc);
+		cf << "n_success " << n_success << "\n";
+		cf << "n_trial "   << n_trial   << "\n";
+		cf.flush();
+	};
+	write_count(0, 0);
+
+	// ---- 5. Perturb-relax-accept loop; write each success immediately ----
+	size_t n_success = 0, n_trial = 0;
+	while (n_success < Nc) {
 		n_trial++;
 		Configuration result(lattice);
 		for (size_t p = 0; p < num; p++) {
@@ -1678,9 +1712,19 @@ int GetCrystalCCO(int argc, char ** argv)
 		double E = potential->Energy();
 
 		if (E < 1e-16) {
-			success_configs.push_back(result);
+			std::vector<std::vector<double>> pos(N_p, std::vector<double>(dim));
+			for (size_t p = 0; p < N_p; p++) {
+				GeometryVector r = result.GetCartesianCoordinates(p);
+				for (DimensionType j = 0; j < dim; j++)
+					pos[p][j] = r.x[j];
+			}
+			h5file.createDataSet("config_" + std::to_string(n_success), pos);
+			n_success++;
+			nAttr.write((int)n_success);
+			h5file.flush();             // commit this config to disk now
+			write_count(n_success, n_trial);
 			ofile << "  trial " << n_trial << ": SUCCESS (Phi = " << E
-			      << "), collected " << success_configs.size() << "/" << Nc << "\n";
+			      << "), collected " << n_success << "/" << Nc << "\n";
 		} else if (Verbosity > 2) {
 			ofile << "  trial " << n_trial << ": rejected (Phi = " << E << ")\n";
 		}
@@ -1690,43 +1734,10 @@ int GetCrystalCCO(int argc, char ** argv)
 			break;
 		}
 	}
-	ofile << "Collected " << success_configs.size() << " configs in " << n_trial << " trials.\n";
-
-	// ---- 5. Write HDF5 output ----
-	if (!success_configs.empty()) {
-		size_t n_cfg = success_configs.size();
-		size_t N_p   = success_configs[0].NumParticle();
-
-		std::vector<std::vector<double>> basis_out(dim, std::vector<double>(dim));
-		for (DimensionType bi = 0; bi < dim; bi++) {
-			GeometryVector bv = success_configs[0].GetBasisVector(bi);
-			for (DimensionType bj = 0; bj < dim; bj++)
-				basis_out[bi][bj] = bv.x[bj];
-		}
-
-		HighFive::File h5file(savename + "_crystal.h5", HighFive::File::Truncate);
-		h5file.createAttribute("dim",        (int)dim);
-		h5file.createAttribute("N",          (int)N_p);
-		h5file.createAttribute("n_configs",  (int)n_cfg);
-		h5file.createAttribute("Nx",         (int)Nx);
-		h5file.createAttribute("Ny",         (int)Ny);
-		h5file.createAttribute("K",          K);
-		h5file.createAttribute("chi",        chi);
-		h5file.createAttribute("sigma_pert", sigma_pert);
-		h5file.createAttribute("basis",      basis_out);
-
-		for (size_t ci = 0; ci < n_cfg; ci++) {
-			std::vector<std::vector<double>> pos(N_p, std::vector<double>(dim));
-			for (size_t p = 0; p < N_p; p++) {
-				GeometryVector r = success_configs[ci].GetCartesianCoordinates(p);
-				for (DimensionType j = 0; j < dim; j++)
-					pos[p][j] = r.x[j];
-			}
-			h5file.createDataSet("config_" + std::to_string(ci), pos);
-		}
-		ofile << "HDF5 output written to " << savename << "_crystal.h5"
-		      << "  (" << n_cfg << " configs)\n";
-	}
+	write_count(n_success, n_trial);
+	h5file.flush();
+	ofile << "Collected " << n_success << " configs in " << n_trial << " trials.\n";
+	ofile << "HDF5 output: " << h5name << "  (" << n_success << " configs)\n";
 
 	delete potential;
 	return 0;
