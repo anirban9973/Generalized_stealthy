@@ -1544,6 +1544,195 @@ int GetMultiCCO(int argc, char ** argv){
 
 
 
+/** \brief Generate crystalline stealthy ground states (chi > 1/2) by seeding from a
+ * perturbed triangular lattice in a commensurate rhombic cell.
+ *
+ * The triangular lattice is an exact Phi = 0 stealthy ground state as long as the
+ * constraint radius K stays below its first Bragg peak.  Random initial conditions
+ * get trapped in metastable minima in this regime, so we instead start each attempt
+ * from the perfect triangular lattice plus a small Gaussian perturbation, which lands
+ * inside the crystalline basin.  Only relaxed configs with Phi < 1e-16 are accepted.
+ *
+ * Invoked as:  ./CCO.out crystal [timelimit_hr] [seed] [verbosity]
+ * stdin order:
+ *     dim  Nx  Ny  K  val  sigma  threads
+ *     savename  Nc  max_steps  sigma_pert
+ */
+int GetCrystalCCO(int argc, char ** argv)
+{
+	std::istream & ifile = std::cin;
+	std::ostream & ofile = std::cout;
+
+	size_t timelimit_in_hour = 20;
+	int seed = 0;
+	if (argc > 2) timelimit_in_hour = (time_t)std::atoi(argv[2]);
+	if (argc > 3) seed = std::atoi(argv[3]);
+	if (argc > 4) Verbosity = (size_t)std::atoi(argv[4]);
+
+	RandomGenerator rngGod(seed);
+	nlopt_srand(999);
+	ProgramStart = std::time(nullptr);
+	TimeLimit = ProgramStart + timelimit_in_hour * 3600 - 5 * 60;
+
+	ofile << "Time limit is " << timelimit_in_hour << " hours\n";
+	ofile << "Random seed is " << seed << "\n";
+	ofile << "Verbosity is " << Verbosity << "\n";
+
+	// ---- 1. Read parameters ----
+	DimensionType dim = 2;
+	size_t Nx = 50, Ny = 50;
+	double K = 0.0, val = 0.0, sigma = 0.2;
+	int num_threads = 4;
+	std::string savename;
+	size_t Nc = 10, max_steps = 1000000;
+	double sigma_pert = 0.03;   // perturbation std (in units of lattice constant a)
+
+	ofile << "Dimension = ";      ifile >> dim;
+	ofile << "Nx = ";             ifile >> Nx;
+	ofile << "Ny = ";             ifile >> Ny;
+	ofile << "K = ";              ifile >> K;
+	ofile << "val = ";            ifile >> val;
+	ofile << "sigma = ";          ifile >> sigma;
+	ofile << "# threads = ";      ifile >> num_threads;
+	ofile << "Save as ";          ifile >> savename;
+	ofile << "Nc = ";             ifile >> Nc;
+	ofile << "max_steps = ";      ifile >> max_steps;
+	ofile << "sigma_pert = ";     ifile >> sigma_pert;
+	ofile << "\n";
+
+	if (dim != 2) {
+		ofile << "GetCrystalCCO only supports dim = 2.\n";
+		return 1;
+	}
+
+	size_t num = Nx * Ny;
+	constexpr double pi = 3.14159265358979323846;
+
+	// ---- 2. Triangular lattice constant at unit number density (rho = 1) ----
+	// area per particle = (sqrt(3)/2) a^2 = 1  =>  a = sqrt(2/sqrt(3))
+	double a_lat = std::sqrt(2.0 / std::sqrt(3.0));
+
+	// Box basis: A1 = Nx*a*(1,0),  A2 = Ny*a*(1/2, sqrt(3)/2)
+	GeometryVector A1(static_cast<int>(dim)), A2(static_cast<int>(dim));
+	A1.x[0] = Nx * a_lat;         A1.x[1] = 0.0;
+	A2.x[0] = Ny * a_lat * 0.5;   A2.x[1] = Ny * a_lat * std::sqrt(3.0) / 2.0;
+	GeometryVector basis[2] = {A1, A2};
+
+	Configuration lattice(dim, basis, a_lat);
+	// perfect triangular lattice: one particle per (i/Nx, j/Ny) site
+	for (size_t i = 0; i < Nx; i++)
+		for (size_t j = 0; j < Ny; j++) {
+			GeometryVector rel(static_cast<int>(dim));
+			rel.x[0] = (double)i / (double)Nx;
+			rel.x[1] = (double)j / (double)Ny;
+			lattice.Insert("a", rel);
+		}
+	double rho = num / lattice.PeriodicVolume();
+	double k_bragg = 4.0 * pi / (a_lat * std::sqrt(3.0));
+	ofile << "N = " << num << ", a = " << a_lat << ", rho = " << rho << "\n";
+	ofile << "K = " << K << ", k_Bragg = " << k_bragg
+	      << " (K/k_Bragg = " << K / k_bragg << ")\n";
+	if (K >= k_bragg)
+		ofile << "WARNING: K >= k_Bragg; triangular lattice is not a Phi=0 ground state!\n";
+
+	// ---- 3. Build single-shell stealthy potential [0, K], S0 = 0 ----
+	MultiShellS0Potential * potential = new MultiShellS0Potential(dim, val, sigma);
+	potential->ParallelNumThread = num_threads;
+	potential->CCPotential1->ParallelNumThread = num_threads;
+	potential->CCPotential2->ParallelNumThread = num_threads;
+
+	double chi = 0.0;
+	{
+		std::vector<GeometryVector> ks = GetKs(lattice, K, K, 1);
+		for (auto & k : ks) {
+			std::vector<double> vals = {1.0};   // flat vtilde
+			potential->CCPotential1->AddConstraint(k, vals);
+			chi++;
+		}
+	}
+	chi /= dim * (num - 1);
+	ofile << "Number of constrained modes = " << potential->CCPotential1->constraints.size() << "\n";
+	ofile << "chi (actual) = " << chi << "\n";
+
+	// perturbation std in relative coordinates (Cartesian ~ sigma_pert * a)
+	double srel_x = sigma_pert / (double)Nx;
+	double srel_y = sigma_pert / (double)Ny;
+	ofile << "sigma_pert = " << sigma_pert << " (in units of a)\n";
+	ofile << "Target successes Nc = " << Nc << ", max_steps = " << max_steps << "\n";
+
+	// ---- 4. Perturb-relax-accept loop ----
+	std::vector<Configuration> success_configs;
+	size_t n_trial = 0;
+	while (success_configs.size() < Nc) {
+		n_trial++;
+		Configuration result(lattice);
+		for (size_t p = 0; p < num; p++) {
+			GeometryVector rel = lattice.GetRelativeCoordinates(p);
+			rel.x[0] += rngGod.RandomDouble_normal(srel_x);
+			rel.x[1] += rngGod.RandomDouble_normal(srel_y);
+			result.MoveParticle(p, rel);
+		}
+
+		RelaxStructure_NLOPT(result, *potential, 0.0, 0, 0.0, max_steps);
+		potential->SetConfiguration(result);
+		double E = potential->Energy();
+
+		if (E < 1e-16) {
+			success_configs.push_back(result);
+			ofile << "  trial " << n_trial << ": SUCCESS (Phi = " << E
+			      << "), collected " << success_configs.size() << "/" << Nc << "\n";
+		} else if (Verbosity > 2) {
+			ofile << "  trial " << n_trial << ": rejected (Phi = " << E << ")\n";
+		}
+
+		if (std::time(nullptr) > TimeLimit) {
+			ofile << "Time limit reached after " << n_trial << " trials.\n";
+			break;
+		}
+	}
+	ofile << "Collected " << success_configs.size() << " configs in " << n_trial << " trials.\n";
+
+	// ---- 5. Write HDF5 output ----
+	if (!success_configs.empty()) {
+		size_t n_cfg = success_configs.size();
+		size_t N_p   = success_configs[0].NumParticle();
+
+		std::vector<std::vector<double>> basis_out(dim, std::vector<double>(dim));
+		for (DimensionType bi = 0; bi < dim; bi++) {
+			GeometryVector bv = success_configs[0].GetBasisVector(bi);
+			for (DimensionType bj = 0; bj < dim; bj++)
+				basis_out[bi][bj] = bv.x[bj];
+		}
+
+		HighFive::File h5file(savename + "_crystal.h5", HighFive::File::Truncate);
+		h5file.createAttribute("dim",        (int)dim);
+		h5file.createAttribute("N",          (int)N_p);
+		h5file.createAttribute("n_configs",  (int)n_cfg);
+		h5file.createAttribute("Nx",         (int)Nx);
+		h5file.createAttribute("Ny",         (int)Ny);
+		h5file.createAttribute("K",          K);
+		h5file.createAttribute("chi",        chi);
+		h5file.createAttribute("sigma_pert", sigma_pert);
+		h5file.createAttribute("basis",      basis_out);
+
+		for (size_t ci = 0; ci < n_cfg; ci++) {
+			std::vector<std::vector<double>> pos(N_p, std::vector<double>(dim));
+			for (size_t p = 0; p < N_p; p++) {
+				GeometryVector r = success_configs[ci].GetCartesianCoordinates(p);
+				for (DimensionType j = 0; j < dim; j++)
+					pos[p][j] = r.x[j];
+			}
+			h5file.createDataSet("config_" + std::to_string(ci), pos);
+		}
+		ofile << "HDF5 output written to " << savename << "_crystal.h5"
+		      << "  (" << n_cfg << " configs)\n";
+	}
+
+	delete potential;
+	return 0;
+}
+
+
 int main(int argc, char ** argv){
 	char tempstring[1000] = {};
 	char tempstring2[300] = {};
@@ -1553,6 +1742,9 @@ int main(int argc, char ** argv){
 
 	if (argc > 1 && strcmp(argv[1], "multi") == 0){
 		GetMultiCCO(argc, argv);
+	}
+	else if (argc > 1 && strcmp(argv[1], "crystal") == 0){
+		GetCrystalCCO(argc, argv);
 	}
 	else
 	{
