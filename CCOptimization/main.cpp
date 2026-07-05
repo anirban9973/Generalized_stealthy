@@ -1555,7 +1555,8 @@ int GetMultiCCO(int argc, char ** argv){
  * initial conditions to the existing minimization routine.
  *
  * Invoked as:  ./CCO.out crystal [timelimit_hr] [seed] [verbosity]
- * stdin order: N  Nc  sigma_pert
+ * stdin order: N  Nc  sigma_pert  chi  threads  savename  max_steps
+ *              (N = points per side; total = N*N)
  */
 int GetCrystalCCO(int argc, char ** argv)
 {
@@ -1578,16 +1579,17 @@ int GetCrystalCCO(int argc, char ** argv)
 	      << ", verbosity = " << Verbosity << "\n";
 
 	// ---- 1. Read parameters ----
-	// N is the TOTAL particle number (same value the existing slurm script passes,
-	// e.g. 2500). The rhombic cell needs Nx = Ny = sqrt(N), so N must be a perfect square.
-	size_t num = 2500;          // total particles
+	// N is the number of points PER SIDE (Nx = Ny = N); the total is N*N. Passing the
+	// per-side count makes the rhombic cell commensurate for any integer N (no perfect-
+	// square requirement on the total).
+	size_t N = 50;              // points per side
 	size_t Nc = 100;            // number of perturbed-lattice initial conditions (attempts)
 	double sigma_pert = 0.03;   // perturbation std, in units of the lattice constant a
 	double chi_target = 0.55;   // target stealthiness; K is derived from the discrete k-count
 	int num_threads = 4;
 	std::string savename = "crystal";
 	size_t max_steps = 100000;  // L-BFGS eval ceiling per attempt
-	ofile << "N (total particles) = ";     ifile >> num;
+	ofile << "N (points per side) = ";     ifile >> N;
 	ofile << "Nc (number of attempts) = "; ifile >> Nc;
 	ofile << "sigma_pert (units of a) = "; ifile >> sigma_pert;
 	ofile << "chi (target) = ";            ifile >> chi_target;
@@ -1595,13 +1597,7 @@ int GetCrystalCCO(int argc, char ** argv)
 	ofile << "savename = ";                ifile >> savename;
 	ofile << "max_steps = ";               ifile >> max_steps;
 
-	size_t N = (size_t)std::llround(std::sqrt((double)num));  // particles per side
-	if (N * N != num) {
-		ofile << "ERROR: N = " << num << " is not a perfect square; "
-		      << "the rhombic cell needs Nx = Ny = sqrt(N). Nearest squares: "
-		      << N*N << " and " << (N+1)*(N+1) << ".\n";
-		return 1;
-	}
+	size_t num = N * N;         // total number of points
 
 	// ---- 2. Rhombic box at unit number density (rho = 1) ----
 	// Triangular lattice: a1 = a*(1,0), a2 = a*(1/2, sqrt(3)/2); area per particle
