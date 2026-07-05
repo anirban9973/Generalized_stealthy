@@ -32,7 +32,7 @@ chi=`awk 'NR==2' params.dat`
 # --------------------------------
 Nc=10000                       # number of perturbed-lattice attempts
 sigma_pert=0.03                # perturbation std (in units of the lattice constant a)
-max_steps=1000000              # L-BFGS eval ceiling per attempt (optimizer stops early at a
+max_steps=10000000             # L-BFGS eval ceiling per attempt (optimizer stops early at a
                                # local minimum; then the next attempt is a fresh perturbed lattice)
 timelimit=20                   # simulation time limit in hours (matches --time above)
 
