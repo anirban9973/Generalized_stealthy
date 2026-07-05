@@ -1562,22 +1562,46 @@ int GetCrystalCCO(int argc, char ** argv)
 	std::istream & ifile = std::cin;
 	std::ostream & ofile = std::cout;
 
+	size_t timelimit_hr = 20;
 	int seed = 0;
+	if (argc > 2) timelimit_hr = (size_t)std::atoi(argv[2]);
 	if (argc > 3) seed = std::atoi(argv[3]);
 	if (argc > 4) Verbosity = (size_t)std::atoi(argv[4]);
 
 	RandomGenerator rng(seed);
+	nlopt_srand(999);
+	ProgramStart = std::time(nullptr);
+	TimeLimit = ProgramStart + timelimit_hr * 3600 - 5 * 60;   // 5-min margin, same as GetCCO
 	constexpr double pi = 3.14159265358979323846;
 	const DimensionType dim = 2;
+	ofile << "Time limit = " << timelimit_hr << " hr, seed = " << seed
+	      << ", verbosity = " << Verbosity << "\n";
 
 	// ---- 1. Read parameters ----
-	size_t N = 50;              // particles per side (Nx = Ny = N)
+	// N is the TOTAL particle number (same value the existing slurm script passes,
+	// e.g. 2500). The rhombic cell needs Nx = Ny = sqrt(N), so N must be a perfect square.
+	size_t num = 2500;          // total particles
 	size_t Nc = 100;            // number of perturbed-lattice initial conditions (attempts)
 	double sigma_pert = 0.03;   // perturbation std, in units of the lattice constant a
-	ofile << "N (particles per side, Nx=Ny=N) = "; ifile >> N;
-	ofile << "Nc (number of attempts) = ";         ifile >> Nc;
-	ofile << "sigma_pert (units of a) = ";         ifile >> sigma_pert;
-	size_t num = N * N;
+	double chi_target = 0.55;   // target stealthiness; K is derived from the discrete k-count
+	int num_threads = 4;
+	std::string savename = "crystal";
+	size_t max_steps = 100000;  // L-BFGS eval ceiling per attempt
+	ofile << "N (total particles) = ";     ifile >> num;
+	ofile << "Nc (number of attempts) = "; ifile >> Nc;
+	ofile << "sigma_pert (units of a) = "; ifile >> sigma_pert;
+	ofile << "chi (target) = ";            ifile >> chi_target;
+	ofile << "# threads = ";               ifile >> num_threads;
+	ofile << "savename = ";                ifile >> savename;
+	ofile << "max_steps = ";               ifile >> max_steps;
+
+	size_t N = (size_t)std::llround(std::sqrt((double)num));  // particles per side
+	if (N * N != num) {
+		ofile << "ERROR: N = " << num << " is not a perfect square; "
+		      << "the rhombic cell needs Nx = Ny = sqrt(N). Nearest squares: "
+		      << N*N << " and " << (N+1)*(N+1) << ".\n";
+		return 1;
+	}
 
 	// ---- 2. Rhombic box at unit number density (rho = 1) ----
 	// Triangular lattice: a1 = a*(1,0), a2 = a*(1/2, sqrt(3)/2); area per particle
@@ -1660,6 +1684,57 @@ int GetCrystalCCO(int argc, char ** argv)
 		      << "  (expect ~ " << std::sqrt(2.0) * sigma_pert * a_lat << ")\n";
 	}
 
+	// ---- 5. Stealthy potential: single shell [0, K], K from the DISCRETE k-count ----
+	// chi = M_indep / (d(N-1)); pick K on the plateau nearest chi_target by taking the
+	// first target_M reciprocal-lattice modes (sorted by |k|) of the actual rhombic box.
+	MultiShellS0Potential * potential = new MultiShellS0Potential(dim, 0.0, 0.2);  // val=0 -> no soft core
+	potential->ParallelNumThread = num_threads;
+	potential->CCPotential1->ParallelNumThread = num_threads;
+	potential->CCPotential2->ParallelNumThread = num_threads;
+
+	std::vector<GeometryVector> ks = GetKs(lattice, k_bragg, k_bragg, 1);  // independent modes, |k| < k_Bragg
+	std::sort(ks.begin(), ks.end(),
+		[](const GeometryVector & l, const GeometryVector & r){ return l.Modulus2() < r.Modulus2(); });
+
+	size_t target_M = (size_t)std::llround(chi_target * dim * (num - 1));
+	if (target_M == 0 || target_M >= ks.size()) {
+		ofile << "ERROR: chi_target = " << chi_target << " needs " << target_M
+		      << " modes, but only " << ks.size() << " exist below k_Bragg. "
+		      << "chi is out of range for this box (max ~ "
+		      << (double)ks.size() / (dim * (num - 1)) << ").\n";
+		delete potential;
+		return 1;
+	}
+	double K       = 0.5 * (std::sqrt(ks[target_M - 1].Modulus2()) + std::sqrt(ks[target_M].Modulus2()));
+	double chi_act = (double)target_M / (dim * (num - 1));
+	for (size_t m = 0; m < target_M; m++) {
+		std::vector<double> vals = {1.0};   // flat vtilde
+		potential->CCPotential1->AddConstraint(ks[m], vals);
+	}
+
+	ofile << "\n===== [3] Stealthy potential (K from discrete chi) =====\n";
+	ofile << "  chi_target    = " << chi_target << "\n";
+	ofile << "  constraints M = " << target_M << "   -> chi_actual = " << chi_act << "\n";
+	ofile << "  K             = " << K << "   (k_Bragg = " << k_bragg
+	      << ", K/k_Bragg = " << K / k_bragg << ")"
+	      << (K < k_bragg ? "  OK" : "  WARNING: K >= k_Bragg!") << "\n";
+
+	// ---- 6. Nc attempts: each a fresh perturbed lattice -> existing optimizer (unchanged) ----
+	double E_max = 1e-16;   // accept threshold, same convention as the ground-state runs
+	ofile << "\n===== [4] Nc attempts via existing CollectiveCoordinateMultiRun =====\n";
+	ofile << "  Nc = " << Nc << ", max_steps = " << max_steps
+	      << ", accept Phi < " << E_max << "\n";
+	for (size_t attempt = 0; attempt < Nc; attempt++) {
+		if (std::time(nullptr) > TimeLimit) {
+			ofile << "Time limit reached at attempt " << attempt << ".\n";
+			break;
+		}
+		Configuration c = make_perturbed_lattice();          // fresh perturbed triangular lattice
+		// one minimization from this initial condition; optimizer/accept/save are the existing code
+		CollectiveCoordinateMultiRun(&c, potential, rng, savename, 1, TimeLimit, "LBFGS", E_max, max_steps);
+	}
+
+	delete potential;
 	return 0;
 }
 
