@@ -4,7 +4,7 @@
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=20         # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
 #SBATCH --time=20:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
-#SBATCH --mem=4G                   # memory per task
+#SBATCH --mem=16G                  # memory per task
 #SBATCH --output=logs/%x_%A_%a.out # stdout: jobname_arrayjobid_taskid.out
 #SBATCH --error=logs/%x_%A_%a.err  # stderr
 
