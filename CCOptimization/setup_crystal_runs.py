@@ -117,7 +117,7 @@ if __name__ == "__main__":
             f.write(f"{N}\n")
 
         with open(os.path.join(run_dir, "params.dat"), "w") as f:
-            f.write(f"{K:.10f}\n{chi_actual:.10f}\n")
+            f.write(f"{K:.17g}\n{chi_actual:.17g}\n")
 
         print(f"Submitting: {run_dir}  (chi_actual={chi_actual:.6f}, K={K:.6f})")
         result = subprocess.run(
