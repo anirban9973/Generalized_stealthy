@@ -1727,8 +1727,12 @@ int GetCrystalCCO(int argc, char ** argv)
 			ofile << "Time limit reached at attempt " << attempt << ".\n";
 			break;
 		}
+		ofile << "\n--- Nc attempt " << (attempt + 1) << " / " << Nc
+		      << " --- (E_init and E_relax printed below)\n";
 		Configuration c = make_perturbed_lattice();          // fresh perturbed triangular lattice
-		// one minimization from this initial condition; optimizer/accept/save are the existing code
+		// one minimization from this initial condition; optimizer/accept/save are the existing code.
+		// CollectiveCoordinateMultiRun prints this attempt's E_init (perturbed lattice) and
+		// E_relax (after minimization).
 		CollectiveCoordinateMultiRun(&c, potential, rng, savename, 1, TimeLimit, "LBFGS", E_max, max_steps);
 	}
 
