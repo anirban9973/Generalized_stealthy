@@ -42,8 +42,10 @@ sigma=0.20                     # soft-core exclusion radius (unused when val=0)
 # --------------------------------
 timelimit=20                   # simulation time limit in hours
 Nc=100000                      # cap on accepted configs; time limit is the real stopper
-max_steps=100000               # L-BFGS steps per relaxation attempt (cap per trial;
-                               # must be low enough that trials cycle within the walltime)
+max_steps=1000000              # L-BFGS eval ceiling per trial. NOT the stopper: the code
+                               # uses Emin=1e-17 as stopval, so a converging trial returns as
+                               # soon as Phi hits machine-zero. This only bounds trials that
+                               # never converge (they are rejected and a fresh start is tried).
 sigma_pert=0.03                # perturbation std (in units of lattice constant a)
 
 # --------------------------------

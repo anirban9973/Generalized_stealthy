@@ -1742,7 +1742,10 @@ int GetCrystalCCO(int argc, char ** argv)
 
 		potential->SetConfiguration(result);
 		double E_init = potential->Energy();          // Phi of the perturbed lattice
-		RelaxStructure_NLOPT(result, *potential, 0.0, 0, 0.0, max_steps);
+		// Emin = 1e-17 acts as NLopt's stopval: the relaxation returns the moment Phi
+		// crosses machine-zero (just below the 1e-16 accept threshold), so max_steps is
+		// only a safety ceiling for trajectories that never converge -- not the stopper.
+		RelaxStructure_NLOPT_Emin(result, *potential, 0.0, 0, 0.0, max_steps, 1e-17);
 		potential->SetConfiguration(result);
 		double E = potential->Energy();               // Phi after relaxation
 
