@@ -25,14 +25,15 @@ fname=crystal_run${SLURM_ARRAY_TASK_ID}   # unique output prefix per array task
 d=2                            # space dimension (GetCrystalCCO supports d=2 only)
 
 # Commensurate rhombic (triangular) cell: Nx x Ny particles, N = Nx*Ny.
-# Constraint radius K is read from params.dat (line 1: K, line 2: chi_actual),
-# precomputed by compute_K_crystal.py / setup_crystal_runs.py so that chi lands
-# on the desired plateau and K stays below the first Bragg peak.
+# N (particles per side) is read from N_value_parameter.dat; the box is always
+# rhombic so Nx = Ny = N.  Constraint radius K is read from params.dat
+# (line 1: K, line 2: chi_actual), both written by setup_crystal_runs.py so that
+# chi lands on the desired plateau and K stays below the first Bragg peak.
+N=`awk 'NR==1' N_value_parameter.dat`
+Nx=${N}                        # particles along a1
+Ny=${N}                        # particles along a2  (N_particles = Nx*Ny)
 K=`awk 'NR==1' params.dat`
 chi=`awk 'NR==2' params.dat`
-
-Nx=50                          # particles along a1
-Ny=50                          # particles along a2  (N = Nx*Ny = 2500)
 val=0.0                        # soft-core repulsion strength (0 = off, pure stealthy)
 sigma=0.20                     # soft-core exclusion radius (unused when val=0)
 
