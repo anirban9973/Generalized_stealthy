@@ -42,7 +42,8 @@ sigma=0.20                     # soft-core exclusion radius (unused when val=0)
 # --------------------------------
 timelimit=20                   # simulation time limit in hours
 Nc=100000                      # cap on accepted configs; time limit is the real stopper
-max_steps=10000000             # L-BFGS steps per relaxation attempt
+max_steps=100000               # L-BFGS steps per relaxation attempt (cap per trial;
+                               # must be low enough that trials cycle within the walltime)
 sigma_pert=0.03                # perturbation std (in units of lattice constant a)
 
 # --------------------------------
