@@ -1718,7 +1718,8 @@ int GetCrystalCCO(int argc, char ** argv)
 	      << (K < k_bragg ? "  OK" : "  WARNING: K >= k_Bragg!") << "\n";
 
 	// ---- 6. Nc attempts: each a fresh perturbed lattice -> existing optimizer (unchanged) ----
-	double E_max = 1e-16;   // accept threshold, same convention as the ground-state runs
+	double E_max = 1e-12;   // accept threshold: Phi < 1e-12 counts as a stealthy crystal
+	                        // (the relaxation floors near ~1e-13 for large N; stalled states sit ~1e-6)
 	ofile << "\n===== [4] Nc attempts via existing CollectiveCoordinateMultiRun =====\n";
 	ofile << "  Nc = " << Nc << ", max_steps = " << max_steps
 	      << ", accept Phi < " << E_max << "\n";
