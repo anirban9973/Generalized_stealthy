@@ -7,7 +7,8 @@
  *   Datasets          : config_0, config_1, …  each (N, dim) float64
  *
  * Positions are Cartesian coordinates at full double precision.
- * ConfigPack files matched: *GS_Success.ConfigPack in the current directory.
+ * ConfigPack files matched: *_Success.ConfigPack in the current directory
+ * (e.g. crystal_run1_Success.ConfigPack, ..., accumulated across all array tasks).
  */
 #include "ConfigPackData.h"
 #include <highfive/H5File.hpp>
@@ -23,7 +24,7 @@ namespace fs = std::filesystem;
 
 int main()
 {
-    const std::string suffix = "GS_Success.ConfigPack";
+    const std::string suffix = "_Success.ConfigPack";
 
     // ----------------------------------------------------------------
     // Collect matching ConfigPack names
