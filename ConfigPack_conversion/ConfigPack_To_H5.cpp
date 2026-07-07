@@ -14,6 +14,7 @@
 #include <highfive/H5File.hpp>
 #include <highfive/H5DataSpace.hpp>
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -76,14 +77,34 @@ int main()
     }
 
     // ----------------------------------------------------------------
+    // Read chi and N-per-side from params.dat (line 1: N per side, line 2: chi)
+    // so each chi's configs.h5 is self-identifying.
+    // ----------------------------------------------------------------
+    double chi_val   = -1.0;
+    int    N_perside = -1;
+    {
+        std::ifstream pf("params.dat");
+        if (pf) {
+            pf >> N_perside >> chi_val;
+            std::cout << "params.dat: N_per_side = " << N_perside
+                      << ", chi = " << chi_val << "\n\n";
+        } else {
+            std::cout << "WARNING: params.dat not found; "
+                         "chi/N_per_side attributes set to -1.\n\n";
+        }
+    }
+
+    // ----------------------------------------------------------------
     // Create HDF5 file
     // ----------------------------------------------------------------
     HighFive::File h5file("configs.h5", HighFive::File::Truncate);
 
-    h5file.createAttribute("dim",       dim_g);
-    h5file.createAttribute("N",         N_g);
-    h5file.createAttribute("n_configs", total_configs);
-    h5file.createAttribute("basis",     basis_g);   // written as (dim, dim) float64
+    h5file.createAttribute("dim",        dim_g);
+    h5file.createAttribute("N",          N_g);          // total particles (from config)
+    h5file.createAttribute("N_per_side", N_perside);    // from params.dat line 1
+    h5file.createAttribute("chi",        chi_val);      // from params.dat line 2
+    h5file.createAttribute("n_configs",  total_configs);
+    h5file.createAttribute("basis",      basis_g);      // written as (dim, dim) float64
 
     // Pre-create all datasets (serial, before parallel section)
     {
