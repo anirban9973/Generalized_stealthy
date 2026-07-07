@@ -1742,6 +1742,125 @@ int GetCrystalCCO(int argc, char ** argv)
 }
 
 
+/** \brief Crystal thermal sampler (Point 1-3 of the ensemble task):
+ *  seed the exact triangular lattice, run low-temperature MD at T_E to sample the
+ *  intrabasin canonical ensemble, and save the (un-quenched) finite-T snapshots.
+ *  Quenching of these samples is a separate later pass.
+ *
+ *  Reuses the existing CollectiveCoordinateMD verbatim (velocity-Verlet, MB
+ *  velocities via SetRandomSpeed, auto-timestep, Andersen thermostat, snapshots
+ *  saved to <savename>.ConfigPack, .MDDump checkpointing).
+ *
+ *  Invoked as:  ./CCO.out crystalmd [timelimit_hr] [seed] [verbosity]
+ *  stdin order: N  chi  T_E  timestep  steps_per_sample  num_samples  equil_samples  threads  savename
+ *               (N = points per side; total = N*N)
+ */
+int GetCrystalMD(int argc, char ** argv)
+{
+	std::istream & ifile = std::cin;
+	std::ostream & ofile = std::cout;
+	std::cout << std::unitbuf;   // live output in the SLURM log
+
+	size_t timelimit_hr = 20;
+	int seed = 0;
+	if (argc > 2) timelimit_hr = (size_t)std::atoi(argv[2]);
+	if (argc > 3) seed = std::atoi(argv[3]);
+	if (argc > 4) Verbosity = (size_t)std::atoi(argv[4]);
+
+	RandomGenerator rngGod(seed);
+	nlopt_srand(999);
+	ProgramStart = std::time(nullptr);
+	TimeLimit = ProgramStart + timelimit_hr * 3600 - 5 * 60;
+	constexpr double pi = 3.14159265358979323846;
+	const DimensionType dim = 2;
+	ofile << "Time limit = " << timelimit_hr << " hr, seed = " << seed << "\n";
+
+	// ---- 1. Parameters ----
+	size_t N = 25;              // points per side (N=25 -> 625 total)
+	double chi_target = 0.55;
+	double T_E = 2e-6;          // MD temperature (dimensionless)
+	double timestep = 0.01;
+	size_t steps_per_sample = 2000;
+	size_t num_samples = 100;
+	size_t equil_samples = 50;
+	int num_threads = 4;
+	std::string savename = "crystalmd";
+	ofile << "N (points per side) = ";     ifile >> N;
+	ofile << "chi (target) = ";            ifile >> chi_target;
+	ofile << "T_E = ";                     ifile >> T_E;
+	ofile << "timestep = ";                ifile >> timestep;
+	ofile << "steps_per_sample = ";        ifile >> steps_per_sample;
+	ofile << "num_samples = ";             ifile >> num_samples;
+	ofile << "equil_samples = ";           ifile >> equil_samples;
+	ofile << "# threads = ";               ifile >> num_threads;
+	ofile << "savename = ";                ifile >> savename;
+
+	size_t num = N * N;
+
+	// ---- 2. Exact triangular lattice in the rhombic cell (rho = 1) ----
+	double a_lat = std::sqrt(2.0 / std::sqrt(3.0));
+	GeometryVector A1(static_cast<int>(dim)), A2(static_cast<int>(dim));
+	A1.x[0] = N * a_lat;         A1.x[1] = 0.0;
+	A2.x[0] = N * a_lat * 0.5;   A2.x[1] = N * a_lat * std::sqrt(3.0) / 2.0;
+	GeometryVector basis[2] = {A1, A2};
+
+	Configuration lattice(dim, basis, a_lat);
+	for (size_t i = 0; i < N; i++)
+		for (size_t j = 0; j < N; j++) {
+			GeometryVector rel(static_cast<int>(dim));
+			rel.x[0] = (double)i / (double)N;
+			rel.x[1] = (double)j / (double)N;
+			lattice.Insert("a", rel);
+		}
+	double k_bragg = 4.0 * pi / (a_lat * std::sqrt(3.0));
+	ofile << "\n===== [1] Triangular lattice seed =====\n";
+	ofile << "  N per side = " << N << "  (N_particles = " << num << ")\n";
+	ofile << "  a = " << a_lat << ", box area = " << lattice.PeriodicVolume()
+	      << ", rho = " << num / lattice.PeriodicVolume() << "\n";
+
+	// ---- 3. Stealthy potential: single shell [0, K], K from discrete chi ----
+	MultiShellS0Potential * potential = new MultiShellS0Potential(dim, 0.0, 0.2);
+	potential->ParallelNumThread = num_threads;
+	potential->CCPotential1->ParallelNumThread = num_threads;
+	potential->CCPotential2->ParallelNumThread = num_threads;
+
+	std::vector<GeometryVector> ks = GetKs(lattice, k_bragg, k_bragg, 1);
+	std::sort(ks.begin(), ks.end(),
+		[](const GeometryVector & l, const GeometryVector & r){ return l.Modulus2() < r.Modulus2(); });
+	size_t target_M = (size_t)std::llround(chi_target * dim * (num - 1));
+	if (target_M == 0 || target_M >= ks.size()) {
+		ofile << "ERROR: chi_target = " << chi_target << " needs " << target_M
+		      << " modes, only " << ks.size() << " below k_Bragg.\n";
+		delete potential;
+		return 1;
+	}
+	double K       = 0.5 * (std::sqrt(ks[target_M - 1].Modulus2()) + std::sqrt(ks[target_M].Modulus2()));
+	double chi_act = (double)target_M / (dim * (num - 1));
+	for (size_t m = 0; m < target_M; m++) {
+		std::vector<double> vals = {1.0};
+		potential->CCPotential1->AddConstraint(ks[m], vals);
+	}
+	ofile << "\n===== [2] Stealthy potential (K from discrete chi) =====\n";
+	ofile << "  chi_target = " << chi_target << " -> chi_actual = " << chi_act
+	      << " (M = " << target_M << ")\n";
+	ofile << "  K = " << K << " (k_Bragg = " << k_bragg << ", K/k_Bragg = " << K / k_bragg << ")\n";
+
+	// ---- 4. Low-temperature MD -> save finite-T snapshots (existing MD code) ----
+	ofile << "\n===== [3] MD sampling at T_E (samples saved un-quenched) =====\n";
+	ofile << "  T_E = " << T_E << ", timestep = " << timestep
+	      << ", steps_per_sample = " << steps_per_sample << "\n";
+	ofile << "  equil_samples = " << equil_samples << ", num_samples = " << num_samples << "\n";
+	ofile << "  snapshots -> " << savename << ".ConfigPack (to be quenched later)\n\n";
+
+	CollectiveCoordinateMD(&lattice, potential, rngGod, timestep, T_E, savename,
+	                       num_samples, steps_per_sample, /*AllowRestore=*/true,
+	                       TimeLimit, equil_samples, /*MDAutoTimeStep=*/true);
+
+	delete potential;
+	return 0;
+}
+
+
 int main(int argc, char ** argv){
 	char tempstring[1000] = {};
 	char tempstring2[300] = {};
@@ -1754,6 +1873,9 @@ int main(int argc, char ** argv){
 	}
 	else if (argc > 1 && strcmp(argv[1], "crystal") == 0){
 		GetCrystalCCO(argc, argv);
+	}
+	else if (argc > 1 && strcmp(argv[1], "crystalmd") == 0){
+		GetCrystalMD(argc, argv);
 	}
 	else
 	{
