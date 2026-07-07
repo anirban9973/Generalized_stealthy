@@ -1,6 +1,6 @@
 /*
  * Parse ConfigPack files into a single HDF5 file.
- * Output: configs.h5
+ * Output: configs_N<total>_chi<chi>.h5   (e.g. configs_N2500_chi0.55.h5)
  *
  * File structure
  *   Global attributes : dim, N, n_configs, basis (dim×dim float64)
@@ -15,6 +15,7 @@
 #include <highfive/H5DataSpace.hpp>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <filesystem>
@@ -95,9 +96,13 @@ int main()
     }
 
     // ----------------------------------------------------------------
-    // Create HDF5 file
+    // Create HDF5 file. Filename encodes the total particle number (N_g = N*N)
+    // and chi so files stay distinguishable by name, e.g. configs_N2500_chi0.55.h5
     // ----------------------------------------------------------------
-    HighFive::File h5file("configs.h5", HighFive::File::Truncate);
+    std::ostringstream h5name;
+    h5name << "configs_N" << N_g << "_chi" << chi_val << ".h5";
+
+    HighFive::File h5file(h5name.str(), HighFive::File::Truncate);
 
     h5file.createAttribute("dim",        dim_g);
     h5file.createAttribute("N",          N_g);          // total particles (from config)
@@ -141,6 +146,6 @@ int main()
     }
 
     std::cout << "\nTotal configs exported: " << total_configs << "\n";
-    std::cout << "Output: configs.h5\n";
+    std::cout << "Output: " << h5name.str() << "\n";
     return 0;
 }
