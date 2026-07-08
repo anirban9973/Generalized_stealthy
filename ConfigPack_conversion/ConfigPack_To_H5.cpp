@@ -7,8 +7,13 @@
  *   Datasets          : config_0, config_1, …  each (N, dim) float64
  *
  * Positions are Cartesian coordinates at full double precision.
- * ConfigPack files matched: *_Success.ConfigPack in the current directory
- * (e.g. crystal_run1_Success.ConfigPack, ..., accumulated across all array tasks).
+ *
+ * Usage:
+ *   configpack_to_h5           quenched:  gather *_Success.ConfigPack
+ *                              -> configs_N<total>_chi<chi>.h5
+ *   configpack_to_h5 thermal   thermal:   gather crystalmd_run*.ConfigPack (raw MD snapshots)
+ *                              -> configs_thermal_N<total>_chi<chi>.h5
+ * All matching packs in the current directory are accumulated across array tasks.
  */
 #include "ConfigPackData.h"
 #include <highfive/H5File.hpp>
@@ -24,9 +29,20 @@
 
 namespace fs = std::filesystem;
 
-int main()
+int main(int argc, char ** argv)
 {
-    const std::string suffix = "_Success.ConfigPack";
+    // Mode: default = quenched (*_Success.ConfigPack); "thermal" = raw MD snapshots
+    // (crystalmd_run*.ConfigPack). The mode also tags the output filename so the two
+    // never collide in the same folder.
+    bool thermal = (argc > 1 && std::string(argv[1]) == "thermal");
+    const std::string tag = thermal ? "thermal_" : "";
+    std::cout << "Mode: " << (thermal ? "thermal (crystalmd_run*.ConfigPack)"
+                                       : "quenched (*_Success.ConfigPack)") << "\n\n";
+
+    auto ends_with = [](const std::string& s, const std::string& suf) {
+        return s.size() >= suf.size() &&
+               s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
+    };
 
     // ----------------------------------------------------------------
     // Collect matching ConfigPack names
@@ -35,12 +51,21 @@ int main()
     for (const auto& entry : fs::directory_iterator(".")) {
         if (!entry.is_regular_file()) continue;
         std::string fn = entry.path().filename().string();
-        if (fn.size() >= suffix.size() &&
-            fn.compare(fn.size() - suffix.size(), suffix.size(), suffix) == 0)
-        {
+
+        bool match;
+        if (thermal) {
+            // raw MD snapshots: crystalmd_run<i>.ConfigPack; skip quenched/init packs
+            match = fn.rfind("crystalmd_run", 0) == 0 &&
+                    ends_with(fn, ".ConfigPack") &&
+                    fn.find("_Success")    == std::string::npos &&
+                    fn.find("_InitConfig") == std::string::npos;
+        } else {
+            match = ends_with(fn, "_Success.ConfigPack");
+        }
+
+        if (match)
             configpacks.push_back(
                 fn.substr(0, fn.size() - std::string(".ConfigPack").size()));
-        }
     }
     std::sort(configpacks.begin(), configpacks.end());
 
@@ -100,7 +125,7 @@ int main()
     // and chi so files stay distinguishable by name, e.g. configs_N2500_chi0.55.h5
     // ----------------------------------------------------------------
     std::ostringstream h5name;
-    h5name << "configs_N" << N_g << "_chi" << chi_val << ".h5";
+    h5name << "configs_" << tag << "N" << N_g << "_chi" << chi_val << ".h5";
 
     HighFive::File h5file(h5name.str(), HighFive::File::Truncate);
 
