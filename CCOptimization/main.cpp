@@ -1847,14 +1847,19 @@ int GetCrystalMD(int argc, char ** argv)
 
 	// ---- 4. Low-temperature MD -> save finite-T snapshots (existing MD code) ----
 	ofile << "\n===== [3] MD sampling at T_E (samples saved un-quenched) =====\n";
-	ofile << "  T_E = " << T_E << ", timestep = " << timestep
+	ofile << "  T_E = " << T_E << ", FIXED timestep = " << timestep
 	      << ", steps_per_sample = " << steps_per_sample << "\n";
 	ofile << "  equil_samples = " << equil_samples << ", num_samples = " << num_samples << "\n";
 	ofile << "  snapshots -> " << savename << ".ConfigPack (to be quenched later)\n\n";
 
+	// MDAutoTimeStep = false: use a FIXED timestep. The auto-timestep tunes dt from the
+	// energy drift, which at low T grows dt past the velocity-Verlet stability edge
+	// (~0.3 for this stiff stealthy potential) and freezes it at a random value ->
+	// non-reproducible blow-ups (Ek ~ 1e8). A fixed dt (~0.05) is safely below the edge,
+	// stable, and at the correct temperature (Ek = (dN/2)kT).
 	CollectiveCoordinateMD(&lattice, potential, rngGod, timestep, T_E, savename,
 	                       num_samples, steps_per_sample, /*AllowRestore=*/true,
-	                       TimeLimit, equil_samples, /*MDAutoTimeStep=*/true);
+	                       TimeLimit, equil_samples, /*MDAutoTimeStep=*/false);
 
 	delete potential;
 	return 0;

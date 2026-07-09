@@ -33,7 +33,8 @@ chi=`awk 'NR==2' params.dat`
 # 3. Fixed MD parameters
 # --------------------------------
 T_E=1e-6                       # MD temperature (dimensionless)
-timestep=0.01                  # initial timestep (auto-tuned during equilibration)
+timestep=0.05                  # FIXED timestep (auto-tuning is off; ~6x below the
+                               # stability edge ~0.3, stable and reproducible)
 steps_per_sample=2000          # MD steps between saved snapshots (spacing)
 num_samples=1000               # snapshots saved per task  (x10 tasks = 10000 per chi)
 equil_samples=200              # warm-up rounds before sampling (each = steps_per_sample steps)
