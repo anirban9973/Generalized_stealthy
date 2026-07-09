@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=CCO_crystalmd
-#SBATCH --array=1-20               # 20 independent MD trajectories (fresh velocities per task)
+#SBATCH --array=1-40               # 40 independent MD trajectories (fresh velocities per task)
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=20         # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
 #SBATCH --time=20:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
@@ -37,7 +37,7 @@ timestep=0.05                  # FIXED timestep (auto-tuning is off; ~6x below t
                                # stability edge ~0.3, stable and reproducible)
 steps_per_sample=20000         # MD steps between saved snapshots (spacing);
                                # x dt=0.05 => ~1000 time units between samples
-num_samples=500                # snapshots saved per task  (x20 tasks = 10000 per chi)
+num_samples=500                # snapshots saved per task  (x40 tasks = 20000 per chi)
 equil_samples=200              # warm-up rounds before sampling (each = steps_per_sample steps)
 timelimit=20                   # simulation time limit in hours (matches --time above)
 
