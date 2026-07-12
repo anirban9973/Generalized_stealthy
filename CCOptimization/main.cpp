@@ -1866,6 +1866,132 @@ int GetCrystalMD(int argc, char ** argv)
 }
 
 
+/** \brief Quench thermalized MD snapshots onto the ground-state manifold.
+ *
+ * Loads every configuration from a thermal ConfigPack (produced by 'crystalmd'),
+ * minimizes each with the existing L-BFGS (RelaxStructure_NLOPT) down to Phi ~ 0,
+ * and saves the accepted ones (Phi < tolerance) to <savename>_Success.ConfigPack.
+ *
+ * The potential is rebuilt from the FIRST loaded config's own box, so the k-set is
+ * identical to the one the MD used (same box -> same reciprocal lattice -> same M).
+ * Only chi is needed as input; N and the box come from the configs themselves.
+ *
+ * Invoked as:  ./CCO.out quench [timelimit_hr] [seed] [verbosity]
+ * stdin order: chi  threads  loadname  savename  max_steps  tolerance
+ */
+int GetCrystalQuench(int argc, char ** argv)
+{
+	std::istream & ifile = std::cin;
+	std::ostream & ofile = std::cout;
+	std::cout << std::unitbuf;   // live output in the SLURM log
+
+	size_t timelimit_hr = 6;
+	if (argc > 2) timelimit_hr = (size_t)std::atoi(argv[2]);
+	if (argc > 4) Verbosity = (size_t)std::atoi(argv[4]);
+
+	nlopt_srand(999);
+	ProgramStart = std::time(nullptr);
+	TimeLimit = ProgramStart + timelimit_hr * 3600 - 5 * 60;
+	constexpr double pi = 3.14159265358979323846;
+
+	// ---- 1. Parameters ----
+	double chi_target = 0.55;
+	int num_threads = 4;
+	std::string loadname = "crystalmd_run1";
+	std::string savename = "crystalmd_run1";
+	size_t max_steps = 100000;
+	double tolerance = 1e-12;
+	ofile << "chi (target) = ";  ifile >> chi_target;
+	ofile << "# threads = ";     ifile >> num_threads;
+	ofile << "loadname = ";      ifile >> loadname;
+	ofile << "savename = ";      ifile >> savename;
+	ofile << "max_steps = ";     ifile >> max_steps;
+	ofile << "tolerance = ";     ifile >> tolerance;
+	ofile << "\n";
+
+	// ---- 2. Open the thermal pack ----
+	ConfigurationPack load(loadname);
+	long long n_in = load.NumConfig();
+	ofile << "===== [1] Thermal snapshots =====\n";
+	ofile << "  load  : " << loadname << ".ConfigPack -> " << n_in << " configs\n";
+	if (n_in <= 0) {
+		ofile << "ERROR: no configurations in " << loadname << ".ConfigPack\n";
+		return 1;
+	}
+
+	// ---- 3. Rebuild the potential from the first config's own box ----
+	Configuration c0 = load.GetConfig(0);
+	DimensionType dim = c0.GetDimension();
+	size_t num = c0.NumParticle();
+	double a_lat   = std::sqrt(2.0 / std::sqrt(3.0));           // rho = 1
+	double k_bragg = 4.0 * pi / (a_lat * std::sqrt(3.0));
+
+	MultiShellS0Potential * potential = new MultiShellS0Potential(dim, 0.0, 0.2);
+	potential->ParallelNumThread = num_threads;
+	potential->CCPotential1->ParallelNumThread = num_threads;
+	potential->CCPotential2->ParallelNumThread = num_threads;
+
+	std::vector<GeometryVector> ks = GetKs(c0, k_bragg, k_bragg, 1);
+	std::sort(ks.begin(), ks.end(),
+		[](const GeometryVector & l, const GeometryVector & r){ return l.Modulus2() < r.Modulus2(); });
+	size_t target_M = (size_t)std::llround(chi_target * dim * (num - 1));
+	if (target_M == 0 || target_M >= ks.size()) {
+		ofile << "ERROR: chi_target = " << chi_target << " needs " << target_M
+		      << " modes, only " << ks.size() << " below k_Bragg.\n";
+		delete potential;
+		return 1;
+	}
+	double K       = 0.5 * (std::sqrt(ks[target_M - 1].Modulus2()) + std::sqrt(ks[target_M].Modulus2()));
+	double chi_act = (double)target_M / (dim * (num - 1));
+	for (size_t m = 0; m < target_M; m++) {
+		std::vector<double> vals = {1.0};
+		potential->CCPotential1->AddConstraint(ks[m], vals);
+	}
+	ofile << "\n===== [2] Stealthy potential (rebuilt on the configs' own box) =====\n";
+	ofile << "  N = " << num << ", dim = " << dim << "\n";
+	ofile << "  chi_target = " << chi_target << " -> chi_actual = " << chi_act
+	      << " (M = " << target_M << ")\n";
+	ofile << "  K = " << K << " (k_Bragg = " << k_bragg << ")\n";
+
+	// ---- 4. Quench every thermal snapshot ----
+	ConfigurationPack success(savename + "_Success");
+	success.Clear();   // fresh run; avoids appending duplicates on re-submit
+
+	ofile << "\n===== [3] Quench (L-BFGS) =====\n";
+	ofile << "  max_steps = " << max_steps << ", accept Phi < " << tolerance << "\n";
+	ofile << "  save  : " << savename << "_Success.ConfigPack\n\n";
+
+	long long n_done = 0, n_accept = 0;
+	for (long long i = 0; i < n_in; i++) {
+		if (std::time(nullptr) > TimeLimit) {
+			ofile << "Time limit reached after " << n_done << " / " << n_in << " configs.\n";
+			break;
+		}
+		Configuration c = load.GetConfig(i);
+		potential->SetConfiguration(c);
+		double Phi_init = potential->Energy();
+
+		RelaxStructure_NLOPT(c, *potential, 0.0, 0, 0.0, max_steps);
+
+		potential->SetConfiguration(c);
+		double Phi_final = potential->Energy();
+
+		n_done++;
+		bool ok = (Phi_final < tolerance);
+		if (ok) { success.AddConfig(c); n_accept++; }
+		ofile << "  config " << i << ": Phi " << Phi_init << " -> " << Phi_final
+		      << (ok ? "  ACCEPT" : "  reject") << "\n";
+	}
+
+	ofile << "\nQuenched " << n_done << " / " << n_in << " configs; accepted "
+	      << n_accept << " (Phi < " << tolerance << ").\n";
+	ofile << "Output: " << savename << "_Success.ConfigPack\n";
+
+	delete potential;
+	return 0;
+}
+
+
 int main(int argc, char ** argv){
 	char tempstring[1000] = {};
 	char tempstring2[300] = {};
@@ -1875,6 +2001,9 @@ int main(int argc, char ** argv){
 
 	if (argc > 1 && strcmp(argv[1], "multi") == 0){
 		GetMultiCCO(argc, argv);
+	}
+	else if (argc > 1 && strcmp(argv[1], "quench") == 0){
+		GetCrystalQuench(argc, argv);
 	}
 	else if (argc > 1 && strcmp(argv[1], "crystal") == 0){
 		GetCrystalCCO(argc, argv);
