@@ -15,10 +15,15 @@ mkdir -p log_quench
 # --------------------------------
 threads=${SLURM_CPUS_PER_TASK}
 Verbosity=3
-# task i quenches the thermal snapshots of MD trajectory i:
-#   loads  crystalmd_run<i>.ConfigPack          (written by ex_crystalmd_slurm.sh)
-#   writes crystalmd_run<i>_Success.ConfigPack  (picked up by configpack_to_h5, default mode)
-fname=crystalmd_run${SLURM_ARRAY_TASK_ID}
+# task i quenches ALL the thermal snapshots of MD trajectory i.
+#   loads  crystalmd_run<i>.ConfigPack                 (READ ONLY - the thermalized
+#                                                       configs are never modified)
+#   writes ground_crystalmd_run<i>_Success.ConfigPack  (distinct prefix, so the thermal
+#                                                       packs can never be overwritten;
+#                                                       configpack_to_h5 default mode
+#                                                       already gathers *_Success)
+loadname=crystalmd_run${SLURM_ARRAY_TASK_ID}
+savename=ground_crystalmd_run${SLURM_ARRAY_TASK_ID}
 
 # --------------------------------
 # 2. Parameters read from params.dat (written by setup_crystalmd_runs.py)
@@ -30,7 +35,7 @@ chi=`awk 'NR==2' params.dat`
 # 3. Fixed quench parameters
 # --------------------------------
 max_steps=100000               # L-BFGS eval ceiling per config (they start near the minimum)
-tolerance=1e-12                # accept a quenched config if Phi < tolerance
+tolerance=1e-16                # accept a quenched config if Phi < tolerance
 timelimit=6                    # hours (MUST match --time above)
 
 # --------------------------------
@@ -41,14 +46,14 @@ exe=./CCO.out
 echo "Array task ID : ${SLURM_ARRAY_TASK_ID}"
 echo "Threads       : ${threads}"
 echo "chi (target)  : ${chi}"
-echo "Load          : ${fname}.ConfigPack"
-echo "Save          : ${fname}_Success.ConfigPack"
+echo "Load          : ${loadname}.ConfigPack   (read only)"
+echo "Save          : ${savename}_Success.ConfigPack"
 echo "tolerance     : ${tolerance}"
 
 time_start=$(date +%s)
 
 # stdin order matches GetCrystalQuench: chi threads loadname savename max_steps tolerance
-${exe} quench ${timelimit} 0 ${Verbosity} <<< "${chi} ${threads} ${fname} ${fname} \
+${exe} quench ${timelimit} 0 ${Verbosity} <<< "${chi} ${threads} ${loadname} ${savename} \
 ${max_steps} ${tolerance}"
 
 time_end=$(date +%s)

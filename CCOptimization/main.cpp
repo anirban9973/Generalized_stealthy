@@ -1962,6 +1962,7 @@ int GetCrystalQuench(int argc, char ** argv)
 	ofile << "  save  : " << savename << "_Success.ConfigPack\n\n";
 
 	long long n_done = 0, n_accept = 0;
+	std::vector<double> phis;   // all Phi_final, to report the numerical floor
 	for (long long i = 0; i < n_in; i++) {
 		if (std::time(nullptr) > TimeLimit) {
 			ofile << "Time limit reached after " << n_done << " / " << n_in << " configs.\n";
@@ -1977,6 +1978,7 @@ int GetCrystalQuench(int argc, char ** argv)
 		double Phi_final = potential->Energy();
 
 		n_done++;
+		phis.push_back(Phi_final);
 		bool ok = (Phi_final < tolerance);
 		if (ok) { success.AddConfig(c); n_accept++; }
 		ofile << "  config " << i << ": Phi " << Phi_init << " -> " << Phi_final
@@ -1985,6 +1987,18 @@ int GetCrystalQuench(int argc, char ** argv)
 
 	ofile << "\nQuenched " << n_done << " / " << n_in << " configs; accepted "
 	      << n_accept << " (Phi < " << tolerance << ").\n";
+	// Report the achieved Phi_final range so the numerical floor is visible even if
+	// nothing was accepted (then set tolerance just above the min and re-run).
+	if (!phis.empty()) {
+		std::vector<double> s(phis);
+		std::sort(s.begin(), s.end());
+		ofile << "Phi_final: min = " << s.front()
+		      << ", median = " << s[s.size() / 2]
+		      << ", max = " << s.back() << "\n";
+		if (n_accept == 0)
+			ofile << "WARNING: nothing accepted. The L-BFGS floor is ~" << s.front()
+			      << "; tolerance = " << tolerance << " is below it. Raise tolerance.\n";
+	}
 	ofile << "Output: " << savename << "_Success.ConfigPack\n";
 
 	delete potential;
