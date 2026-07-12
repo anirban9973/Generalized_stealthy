@@ -3,7 +3,7 @@
 #SBATCH --array=1-80               # 1:1 with the 80 thermal packs from ex_crystalmd_slurm.sh
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=20         # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
-#SBATCH --time=8:00:00             # wall-clock limit (hh:mm:ss); MUST match timelimit below
+#SBATCH --time=20:00:00            # wall-clock limit (hh:mm:ss); MUST match timelimit below
 #SBATCH --mem=16G                  # memory per task
 #SBATCH --output=log_quench/%x_%A_%a.out   # separate log dir from the MD run
 #SBATCH --error=log_quench/%x_%A_%a.err
@@ -34,9 +34,9 @@ chi=`awk 'NR==2' params.dat`
 # --------------------------------
 # 3. Fixed quench parameters
 # --------------------------------
-max_steps=100000               # L-BFGS eval ceiling per config (they start near the minimum)
+max_steps=10000000             # L-BFGS eval ceiling per config
 tolerance=1e-16                # accept a quenched config if Phi < tolerance
-timelimit=8                    # hours (MUST match --time above)
+timelimit=20                   # hours (MUST match --time above)
 
 # --------------------------------
 # 4. Run
