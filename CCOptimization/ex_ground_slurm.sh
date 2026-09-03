@@ -1,14 +1,17 @@
 #!/bin/bash
+# IMPORTANT: run  `mkdir -p logs`  BEFORE `sbatch`, because SLURM opens the
+# --output/--error paths below before this script executes; the in-script mkdir
+# would be too late if logs/ does not already exist.
 #SBATCH --job-name=CCO_ground
 #SBATCH --array=1-10               # array indices; each index = one independent run
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=4          # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
-#SBATCH --time=04:00:00            # wall-clock limit (hh:mm:ss); should match timelimit below
+#SBATCH --time=04:00:00            # wall-clock limit (hh:mm:ss); MUST match timelimit below
 #SBATCH --mem=4G                   # memory per task
 #SBATCH --output=logs/%x_%A_%a.out # stdout: jobname_arrayjobid_taskid.out
 #SBATCH --error=logs/%x_%A_%a.err  # stderr
 
-mkdir -p logs
+mkdir -p logs   # kept for reruns; the pre-sbatch mkdir above is the one that matters
 
 # --------------------------------
 # 1. Derived from SLURM environment
@@ -33,10 +36,11 @@ d=2                            # space dimension
 # Generalized stealthy: M annular shells, each defined by (K1, delta) in unit number density.
 # S(k) = 0 for k in union of [K1^(n), K1^(n) + delta^(n)], n = 1..M.
 # To use a single standard stealthy shell: set M=1, K1s=(0.0), deltas=(your_delta).
-M=2                            # number of shells
-K1s=(0.0  0.5)                 # lower bounds k1^(n) per shell (unit number density)
-deltas=(0.3  0.2)              # widths delta^(n) per shell (unit number density)
-S0s=(0.0  0.0)                 # S0 per shell: 0.0 = stealthy, >0 = equiluminous
+M=1                            # number of shells
+K1s=(0.5)                      # lower bound k1 (unit number density); K1>0 => stealthy
+deltas=(0.2)                   # width delta => annulus [0.5, 0.7]        NONHYPERUNIFORM
+S0s=(0.0)                      # S0=0 stealthy. (K1>0 leaves k->0 free, so NOT hyperuniform,
+                               #  which is the regime where the hole penalty matters.)
 vareps0=0.0                    # relative strength of the soft-core repulsion. (0 means no soft-core repulsions.)
 phi_fake=0.15                  # (Do not touch) fictitious packing fraction
 sigma=0.20                     # exclusion radius of soft-core repulsion (unit number density)
@@ -44,7 +48,7 @@ sigma=0.20                     # exclusion radius of soft-core repulsion (unit n
 # --------------------------------
 # 3. Computational parameters
 # --------------------------------
-timelimit=1                    # simulation time limit in hours 
+timelimit=4                    # simulation time limit in hours (MUST match --time=04:00:00)
 N=4000                          # number of particles
 Nc=1                          # number of configurations per array task
 

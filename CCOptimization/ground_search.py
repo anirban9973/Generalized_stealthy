@@ -33,6 +33,11 @@ from scipy.optimize import minimize
 import h5py
 
 
+class _TimeUp(Exception):
+    """Raised from the L-BFGS callback to abort a stage when the wall limit is hit."""
+    pass
+
+
 # ---------------------------------------------------------------- k-space term
 def phi_ann_and_grad(r, kvecs, N):
     """Phi_ann = sum_k |rho_k|^2 / N  and its gradient (N,2). Vectorized (BLAS)."""
@@ -142,20 +147,26 @@ def unit_ball_volume(d):
 
 
 def build_kvecs(shells_abs, L, dim):
-    """All reciprocal vectors k=(2pi/L)*n with k1 < |k| <= k2 for some stealthy shell."""
+    """Independent reciprocal vectors k=(2pi/L)*n with k1 < |k| <= k2 for some shell.
+
+    Only ONE of each +-k pair is kept (upper half-plane), i.e. the independent
+    collective-coordinate constraints -- matching the C++ GetKs/CCO convention.
+    So Phi_ann = sum over these modes, and chi = len(kvecs)/(d(N-1)) is correct.
+    """
     if dim != 2:
         raise SystemExit("ground_search.py currently supports dim=2 only.")
     k2max = max(k2 for (_, k2) in shells_abs)
     nmax = int(math.ceil(k2max * L / (2.0 * math.pi))) + 1
     ns = np.arange(-nmax, nmax + 1)
     nx, ny = np.meshgrid(ns, ns)
-    n = np.stack([nx.ravel(), ny.ravel()], axis=1).astype(float)
-    kv = (2.0 * math.pi / L) * n
+    nx, ny = nx.ravel(), ny.ravel()
+    kv = (2.0 * math.pi / L) * np.stack([nx, ny], axis=1).astype(float)
     km = np.linalg.norm(kv, axis=1)
-    keep = np.zeros(km.shape, dtype=bool)
+    in_ann = np.zeros(km.shape, dtype=bool)
     for (k1, k2) in shells_abs:
-        keep |= (km > k1 + 1e-12) & (km <= k2 + 1e-12)
-    return kv[keep]
+        in_ann |= (km > k1 + 1e-12) & (km <= k2 + 1e-12)
+    half = (nx > 0) | ((nx == 0) & (ny > 0))       # one per +-k pair (independent)
+    return kv[in_ann & half]
 
 
 # ---------------------------------------------------------------------- driver
@@ -189,10 +200,13 @@ def main():
     print(f"  annuli (absolute k): {['[%.4f,%.4f]' % s for s in shells_abs]}", flush=True)
     print(f"  constrained modes: {len(kvecs)}   chi ~ {len(kvecs)/(dim*(N-1)):.4f}", flush=True)
     print(f"  Rmax={p['Rmax']}, lambda_h={p['lambda_h']}, grid schedule={p['grid_sched']}", flush=True)
-    print(f"  Nc={p['Nc']}, maxsteps={p['maxsteps']}, tol={p['tol']}\n", flush=True)
+    print(f"  Nc={p['Nc']}, maxsteps={p['maxsteps']}, ftol(tolerance)={p['tol']}\n", flush=True)
+    if p["algorithm"].upper() not in ("LBFGS", "L-BFGS", "L-BFGS-B"):
+        print(f"WARNING: algorithm '{p['algorithm']}' not supported; using L-BFGS-B.", flush=True)
 
     rng = np.random.default_rng(seed)
     configs, diags = [], []
+    stop_all = False
     for c in range(p["Nc"]):
         if time.time() > t_stop:
             print(f"Time limit reached; produced {c}/{p['Nc']} configs.", flush=True)
@@ -203,14 +217,28 @@ def main():
         for M in p["grid_sched"]:                             # refine 64 -> 128 -> 256
             grid = make_grid(L, M)
             obj = make_objective(kvecs, N, L, grid, p["Rmax"], p["lambda_h"], M, workers)
-            res = minimize(obj, r.ravel(), method="L-BFGS-B", jac=True,
-                           options={"maxiter": p["maxsteps"], "maxfun": 10 * p["maxsteps"],
-                                    "ftol": 1e-18, "gtol": 1e-14})
-            r = res.x.reshape(N, dim)
+            state = {"x": r.ravel().copy()}
+            def cb(xk, _s=state):                             # abort mid-stage on wall limit
+                _s["x"] = np.asarray(xk)
+                if time.time() > t_stop:
+                    raise _TimeUp()
+            try:
+                res = minimize(obj, r.ravel(), method="L-BFGS-B", jac=True, callback=cb,
+                               options={"maxiter": p["maxsteps"], "maxfun": 10 * p["maxsteps"],
+                                        "ftol": p["tol"], "gtol": 1e-14})
+                r = res.x.reshape(N, dim)
+            except _TimeUp:
+                r = state["x"].reshape(N, dim)
+                stop_all = True
             d_final = report(f"config {c}", r, kvecs, N, L,
                              p["Rmax"], p["lambda_h"], M, workers)
+            if stop_all:
+                print("  Time limit reached during L-BFGS; stopping this config.", flush=True)
+                break
         configs.append(np.mod(r, L))
         diags.append(d_final)
+        if stop_all:
+            break
 
     # ---- HDF5 output ----
     out = p["savename"] + ".h5"
