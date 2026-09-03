@@ -53,6 +53,11 @@ eps0="tolerance 1e-16"
 max_eval="maxsteps 100000"
 algorithm="algorithm LBFGS"
 
+# Hole-constraint parameters (used by ground_search.py)
+Rmax=1.2                       # max allowed hole radius (unit number density)
+lambda_h=1.0                   # hole penalty weight
+Mgrid="64 128 256"             # probe-grid refinement schedule
+
 # ------------- do not touch ---------
 pi=`echo "4*a(1)" | bc -l`
 if [ "$d" == 1 ]; then
@@ -73,7 +78,12 @@ for (( n=0; n<M; n++ )); do
 done
 # ------------------------------------
 
-exe=./CCO.out
+exe="python3 ground_search.py"        # was ./CCO.out
+
+# numpy/BLAS honor these for the vectorized k-space term (matches old -fopenmp)
+export OMP_NUM_THREADS=${threads}
+export OPENBLAS_NUM_THREADS=${threads}
+export MKL_NUM_THREADS=${threads}
 
 echo "Array task ID : ${SLURM_ARRAY_TASK_ID}"
 echo "Seed          : ${seed}"
@@ -82,9 +92,10 @@ echo "Save prefix   : ${fname}_GS"
 
 time_start=$(date +%s)
 
+# Same CLI + stdin as CCO.out, with the hole params (Rmax lambda_h grid) appended.
 ${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $vareps0 ${sigma} ${phi_fake} \
 ${threads} ${N} ${Nc} random ${fname}_GS \
-ground $eps0 $max_eval $algorithm run"
+ground $eps0 $max_eval $algorithm run ${Rmax} ${lambda_h} ${Mgrid}"
 
 time_end=$(date +%s)
 elapsed=$(( time_end - time_start ))
