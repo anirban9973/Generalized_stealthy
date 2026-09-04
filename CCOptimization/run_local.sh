@@ -32,7 +32,7 @@ algorithm="algorithm LBFGS"
 
 lambda_h=5.0                   # hole penalty weight
 epsilon_grid=0.1               # coarser grid than the cluster -> faster on a laptop
-eps_ann=1e-16                  # accept if Phi_ann  < eps_ann
+eps_ann=1e-12                  # accept if Phi_ann  < eps_ann
 eps_hole=1e-10                 # accept if Phi_hole < eps_hole
 n_kmax=1000                    # radial S(k) saved up to kmax = n_kmax*(2*pi/L)
 

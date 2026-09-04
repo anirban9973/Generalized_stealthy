@@ -55,7 +55,7 @@ Nc=1                          # number of configurations per array task
 
 # Minimization parameters
 eps0="tolerance 1e-16"
-max_eval="maxsteps 100000"
+max_eval="maxsteps 10000000"
 algorithm="algorithm LBFGS"
 
 # Hole-constraint parameters (used by ground_search.py)
@@ -64,7 +64,7 @@ algorithm="algorithm LBFGS"
 #   Mgrid chosen so h/sqrt(2) <= epsilon_grid*Rmax (rounded up to a multiple of 32, min 64)
 lambda_h=5.0                   # hole penalty weight
 epsilon_grid=0.1               # fractional grid resolution (smaller = finer grid = costlier)
-eps_ann=1e-16                  # accept if Phi_ann  < eps_ann   (stealthiness)
+eps_ann=1e-12                  # accept if Phi_ann  < eps_ann   (stealthiness)
 eps_hole=1e-10                 # accept if Phi_hole < eps_hole  (holes)
 n_kmax=1000                    # radial S(k) saved up to kmax = n_kmax*(2*pi/L)
 
