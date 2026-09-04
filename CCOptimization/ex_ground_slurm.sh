@@ -62,8 +62,8 @@ algorithm="algorithm LBFGS"
 # Rmax and the grid size Mgrid are now derived INSIDE ground_search.py:
 #   Rmax = 3*pi/(2*Keff),  Keff = K2-K1   (Zhang-style hole scale, annular extension)
 #   Mgrid chosen so h/sqrt(2) <= epsilon_grid*Rmax (rounded up to a multiple of 32, min 64)
-lambda_h=1.0                   # hole penalty weight
-epsilon_grid=0.05              # fractional grid resolution (smaller = finer grid = costlier)
+lambda_h=5.0                   # hole penalty weight
+epsilon_grid=0.1               # fractional grid resolution (smaller = finer grid = costlier)
 eps_ann=1e-16                  # accept if Phi_ann  < eps_ann   (stealthiness)
 eps_hole=1e-10                 # accept if Phi_hole < eps_hole  (holes)
 

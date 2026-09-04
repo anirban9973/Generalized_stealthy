@@ -30,7 +30,7 @@ eps0="tolerance 1e-16"
 max_eval="maxsteps 100000"
 algorithm="algorithm LBFGS"
 
-lambda_h=1.0                   # hole penalty weight
+lambda_h=5.0                   # hole penalty weight
 epsilon_grid=0.1               # coarser grid than the cluster -> faster on a laptop
 eps_ann=1e-16                  # accept if Phi_ann  < eps_ann
 eps_hole=1e-10                 # accept if Phi_hole < eps_hole
