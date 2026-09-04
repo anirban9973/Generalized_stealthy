@@ -6,7 +6,7 @@
 #SBATCH --array=1-10               # array indices; each index = one independent run
 #SBATCH --ntasks=1                 # one process per array task
 #SBATCH --cpus-per-task=4          # OpenMP threads per task; also sets $SLURM_CPUS_PER_TASK
-#SBATCH --time=04:00:00            # wall-clock limit (hh:mm:ss); MUST match timelimit below
+#SBATCH --time=08:00:00            # wall-clock limit (hh:mm:ss); MUST match timelimit below
 #SBATCH --mem=64G                   # memory per task
 #SBATCH --output=logs/%x_%A_%a.out # stdout: jobname_arrayjobid_taskid.out
 #SBATCH --error=logs/%x_%A_%a.err  # stderr
@@ -49,7 +49,7 @@ sigma=0.20                     # exclusion radius of soft-core repulsion (unit n
 # --------------------------------
 # 3. Computational parameters
 # --------------------------------
-timelimit=4                    # simulation time limit in hours (MUST match --time=04:00:00)
+timelimit=8                    # simulation time limit in hours (MUST match --time=08:00:00)
 N=1000                          # number of particles
 Nc=1                          # number of configurations per array task
 
