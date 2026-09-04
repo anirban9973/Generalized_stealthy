@@ -37,8 +37,8 @@ d=2                            # space dimension
 # S(k) = 0 for k in union of [K1^(n), K1^(n) + delta^(n)], n = 1..M.
 # To use a single standard stealthy shell: set M=1, K1s=(0.0), deltas=(your_delta).
 M=1                            # number of shells (auto-Rmax requires exactly ONE stealthy annulus)
-K1s=(0.5)                      # lower bound k1 (unit number density); K1>0 => NONHYPERUNIFORM
-deltas=(2.5)                   # width delta => annulus [0.5, 3.0], Keff=2.5
+K1s=(1.0)
+deltas=(3.59)
 S0s=(0.0)                      # S0=0 stealthy. ground_search.py sets Rmax=3*pi/(2*Keff)~1.89
                                #  here (binds). A narrow annulus (small Keff) gives Rmax>>1,
                                #  which is vacuous, so keep Keff of order a few.
@@ -50,7 +50,7 @@ sigma=0.20                     # exclusion radius of soft-core repulsion (unit n
 # 3. Computational parameters
 # --------------------------------
 timelimit=4                    # simulation time limit in hours (MUST match --time=04:00:00)
-N=4000                          # number of particles
+N=1000                          # number of particles
 Nc=1                          # number of configurations per array task
 
 # Minimization parameters
@@ -63,7 +63,7 @@ algorithm="algorithm LBFGS"
 #   Rmax = 3*pi/(2*Keff),  Keff = K2-K1   (Zhang-style hole scale, annular extension)
 #   Mgrid chosen so h/sqrt(2) <= epsilon_grid*Rmax (rounded up to a multiple of 32, min 64)
 lambda_h=1.0                   # hole penalty weight
-epsilon_grid=0.1               # fractional grid resolution (smaller = finer grid = costlier)
+epsilon_grid=0.05               # fractional grid resolution (smaller = finer grid = costlier)
 
 # ------------- do not touch ---------
 pi=`echo "4*a(1)" | bc -l`
@@ -84,6 +84,8 @@ for (( n=0; n<M; n++ )); do
     shell_str="${shell_str} ${K1a} ${deltaa} ${S0s[$n]}"
 done
 # ------------------------------------
+module load anaconda/2025.12
+module load data_analysis
 
 exe="python3 ground_search.py"        # was ./CCO.out
 
