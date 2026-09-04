@@ -39,9 +39,9 @@ d=2                            # space dimension
 M=1                            # number of shells (auto-Rmax requires exactly ONE stealthy annulus)
 K1s=(1.0)
 deltas=(3.59)
-S0s=(0.0)                      # S0=0 stealthy. ground_search.py sets Rmax=3*pi/(2*Keff)~1.89
-                               #  here (binds). A narrow annulus (small Keff) gives Rmax>>1,
-                               #  which is vacuous, so keep Keff of order a few.
+S0s=(0.0)                      # S0=0 stealthy. Keff=K2-K1=3.59 -> ground_search.py sets
+                               #  Rmax=3*pi/(2*Keff)~1.31 (binds). A narrow annulus (small
+                               #  Keff) gives Rmax>>1 which is vacuous, so keep Keff ~ a few.
 vareps0=0.0                    # relative strength of the soft-core repulsion. (0 means no soft-core repulsions.)
 phi_fake=0.15                  # (Do not touch) fictitious packing fraction
 sigma=0.20                     # exclusion radius of soft-core repulsion (unit number density)
@@ -104,7 +104,8 @@ echo "Save prefix   : ${fname}_GS"
 
 time_start=$(date +%s)
 
-# Same CLI + stdin as CCO.out, with the two hole params (lambda_h epsilon_grid) appended.
+# Same CLI + stdin as CCO.out, with the hole params (lambda_h epsilon_grid),
+# the two acceptance thresholds (eps_ann eps_hole), and n_kmax appended.
 ${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $vareps0 ${sigma} ${phi_fake} \
 ${threads} ${N} ${Nc} random ${fname}_GS \
 ground $eps0 $max_eval $algorithm run ${lambda_h} ${epsilon_grid} ${eps_ann} ${eps_hole} ${n_kmax}"
