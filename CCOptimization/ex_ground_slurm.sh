@@ -66,6 +66,7 @@ lambda_h=5.0                   # hole penalty weight
 epsilon_grid=0.1               # fractional grid resolution (smaller = finer grid = costlier)
 eps_ann=1e-16                  # accept if Phi_ann  < eps_ann   (stealthiness)
 eps_hole=1e-10                 # accept if Phi_hole < eps_hole  (holes)
+n_kmax=1000                    # radial S(k) saved up to kmax = n_kmax*(2*pi/L)
 
 # ------------- do not touch ---------
 pi=`echo "4*a(1)" | bc -l`
@@ -86,8 +87,8 @@ for (( n=0; n<M; n++ )); do
     shell_str="${shell_str} ${K1a} ${deltaa} ${S0s[$n]}"
 done
 # ------------------------------------
-module load anaconda/2025.12
-module load data_analysis
+module load anaconda3/2025.12
+conda activate data_analysis
 
 exe="python3 ground_search.py"        # was ./CCO.out
 
@@ -106,7 +107,7 @@ time_start=$(date +%s)
 # Same CLI + stdin as CCO.out, with the two hole params (lambda_h epsilon_grid) appended.
 ${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $vareps0 ${sigma} ${phi_fake} \
 ${threads} ${N} ${Nc} random ${fname}_GS \
-ground $eps0 $max_eval $algorithm run ${lambda_h} ${epsilon_grid} ${eps_ann} ${eps_hole}"
+ground $eps0 $max_eval $algorithm run ${lambda_h} ${epsilon_grid} ${eps_ann} ${eps_hole} ${n_kmax}"
 
 time_end=$(date +%s)
 elapsed=$(( time_end - time_start ))

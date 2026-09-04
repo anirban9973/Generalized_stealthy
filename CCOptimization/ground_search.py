@@ -170,6 +170,39 @@ def hole_diagnostics(r, L, grid_pts, Rmax, workers):
     }
 
 
+def radial_Sk(r, N, L, kmax, chunk=40000):
+    """
+    Azimuthally-averaged structure factor S(|k|) on the reciprocal grid
+    k = (2*pi/L) n,  0 < |k| <= kmax,  binned into shells of width dk=2*pi/L.
+    Computed once per (saved) config, chunked over k to bound memory.
+    Returns (k_centers, S_radial); bins with no modes are NaN.
+    """
+    dk = 2.0 * math.pi / L
+    nmax = int(math.ceil(kmax / dk))
+    ns = np.arange(-nmax, nmax + 1)
+    nx, ny = np.meshgrid(ns, ns)
+    n = np.stack([nx.ravel(), ny.ravel()], axis=1).astype(float)
+    km = dk * np.linalg.norm(n, axis=1)
+    sel = (km > 1e-12) & (km <= kmax)
+    kv = dk * n[sel]
+    km = km[sel]
+
+    Ssum = np.zeros(nmax + 1)
+    cnt = np.zeros(nmax + 1)
+    for i in range(0, len(kv), chunk):
+        kb = kv[i:i + chunk]
+        rho = np.exp(1j * (kb @ r.T)).sum(axis=1)
+        Sk = (np.abs(rho) ** 2) / N
+        b = np.clip(np.rint(km[i:i + chunk] / dk).astype(int), 0, nmax)
+        np.add.at(Ssum, b, Sk)
+        np.add.at(cnt, b, 1.0)
+
+    kc = np.arange(nmax + 1) * dk
+    with np.errstate(invalid="ignore"):
+        Sr = np.where(cnt > 0, Ssum / np.maximum(cnt, 1.0), np.nan)
+    return kc[1:], Sr[1:]           # drop k=0 bin
+
+
 # ------------------------------------------------------------------- objective
 def make_objective(kvecs, N, L, grid_pts, Rmax, lambda_h, Mgrid, workers):
     shape = (N, 2)
@@ -281,12 +314,13 @@ def parse_stdin(tokens):
 
     tail = list(it)
 
-    if len(tail) != 4:
+    if len(tail) != 5:
         raise SystemExit(
-            "After 'run', expected exactly: lambda_h epsilon_grid eps_ann eps_hole\n"
-            "Example: run 1.0 0.05 1e-8 1e-8\n"
+            "After 'run', expected exactly: lambda_h epsilon_grid eps_ann eps_hole n_kmax\n"
+            "Example: run 5.0 0.1 1e-12 1e-10 1000\n"
             "  eps_ann  : accept if Phi_ann  < eps_ann   (stealthiness)\n"
             "  eps_hole : accept if Phi_hole < eps_hole  (holes)\n"
+            "  n_kmax   : radial S(k) is saved up to kmax = n_kmax * (2*pi/L)\n"
             "Rmax and Mgrid are still derived internally."
         )
 
@@ -294,6 +328,7 @@ def parse_stdin(tokens):
     epsilon_grid = float(tail[1])
     eps_ann = float(tail[2])
     eps_hole = float(tail[3])
+    n_kmax = int(tail[4])
 
     return {
         "dim": dim,
@@ -314,6 +349,7 @@ def parse_stdin(tokens):
         "epsilon_grid": epsilon_grid,
         "eps_ann": eps_ann,
         "eps_hole": eps_hole,
+        "n_kmax": n_kmax,
     }
 
 
@@ -467,10 +503,16 @@ def main():
             flush=True,
         )
 
+    kmax = p["n_kmax"] * (2.0 * math.pi / L)
+    print(f"  radial S(k) saved up to kmax={kmax:.4f} "
+          f"(n_kmax={p['n_kmax']} shells of 2*pi/L)\n", flush=True)
+
     rng = np.random.default_rng(seed)
 
     configs = []
     diags = []
+    sk_list = []
+    k_radial = None
     stop_all = False
 
     for c in range(p["Nc"]):
@@ -564,6 +606,12 @@ def main():
             flush=True,
         )
 
+        # radial S(k) of the final config (saved whether accepted or not)
+        kc, Sr = radial_Sk(r, N, L, kmax)
+        if k_radial is None:
+            k_radial = kc
+        sk_list.append(Sr)
+
         configs.append(np.mod(r, L))
         diags.append(d_final)
 
@@ -593,6 +641,14 @@ def main():
         f.attrs["epsilon_grid"] = p["epsilon_grid"]
         f.attrs["eps_ann"] = p["eps_ann"]
         f.attrs["eps_hole"] = p["eps_hole"]
+        f.attrs["n_kmax"] = p["n_kmax"]
+        f.attrs["kmax"] = kmax
+
+        # radial S(k): one shared |k| axis + one S(k) per config
+        if k_radial is not None:
+            f.create_dataset("k_radial", data=k_radial)
+            for i, Sr in enumerate(sk_list):
+                f.create_dataset(f"Sk_radial_{i}", data=Sr)
         f.attrs["Mgrid"] = Mgrid
         f.attrs["grid_spacing"] = h
         f.attrs["grid_error_bound"] = grid_error_bound

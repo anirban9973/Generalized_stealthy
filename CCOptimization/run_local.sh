@@ -34,6 +34,7 @@ lambda_h=5.0                   # hole penalty weight
 epsilon_grid=0.1               # coarser grid than the cluster -> faster on a laptop
 eps_ann=1e-16                  # accept if Phi_ann  < eps_ann
 eps_hole=1e-10                 # accept if Phi_hole < eps_hole
+n_kmax=1000                    # radial S(k) saved up to kmax = n_kmax*(2*pi/L)
 
 # --------------------------------
 # a-scaling (identical to the slurm): script multiplies k by a; the code divides back
@@ -60,4 +61,4 @@ echo "seed=${seed}, threads=${threads}, N=${N}  ->  ${fname}.h5"
 
 python3 ground_search.py ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< \
 "${d} ${shell_str} ${vareps0} ${sigma} ${phi_fake} ${threads} ${N} ${Nc} \
-random ${fname} ground ${eps0} ${max_eval} ${algorithm} run ${lambda_h} ${epsilon_grid} ${eps_ann} ${eps_hole}"
+random ${fname} ground ${eps0} ${max_eval} ${algorithm} run ${lambda_h} ${epsilon_grid} ${eps_ann} ${eps_hole} ${n_kmax}"
