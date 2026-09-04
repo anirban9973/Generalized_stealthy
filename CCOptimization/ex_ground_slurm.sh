@@ -63,7 +63,9 @@ algorithm="algorithm LBFGS"
 #   Rmax = 3*pi/(2*Keff),  Keff = K2-K1   (Zhang-style hole scale, annular extension)
 #   Mgrid chosen so h/sqrt(2) <= epsilon_grid*Rmax (rounded up to a multiple of 32, min 64)
 lambda_h=1.0                   # hole penalty weight
-epsilon_grid=0.05               # fractional grid resolution (smaller = finer grid = costlier)
+epsilon_grid=0.05              # fractional grid resolution (smaller = finer grid = costlier)
+eps_ann=1e-8                   # accept if Phi_ann  < eps_ann   (stealthiness)
+eps_hole=1e-8                  # accept if Phi_hole < eps_hole  (holes)
 
 # ------------- do not touch ---------
 pi=`echo "4*a(1)" | bc -l`
@@ -104,7 +106,7 @@ time_start=$(date +%s)
 # Same CLI + stdin as CCO.out, with the two hole params (lambda_h epsilon_grid) appended.
 ${exe} ${timelimit} ${seed} ${beg_idx} ${Verbosity} <<< "${d} ${shell_str} $vareps0 ${sigma} ${phi_fake} \
 ${threads} ${N} ${Nc} random ${fname}_GS \
-ground $eps0 $max_eval $algorithm run ${lambda_h} ${epsilon_grid}"
+ground $eps0 $max_eval $algorithm run ${lambda_h} ${epsilon_grid} ${eps_ann} ${eps_hole}"
 
 time_end=$(date +%s)
 elapsed=$(( time_end - time_start ))
