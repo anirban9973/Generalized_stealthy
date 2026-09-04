@@ -64,8 +64,8 @@ algorithm="algorithm LBFGS"
 #   Mgrid chosen so h/sqrt(2) <= epsilon_grid*Rmax (rounded up to a multiple of 32, min 64)
 lambda_h=1.0                   # hole penalty weight
 epsilon_grid=0.05              # fractional grid resolution (smaller = finer grid = costlier)
-eps_ann=1e-8                   # accept if Phi_ann  < eps_ann   (stealthiness)
-eps_hole=1e-8                  # accept if Phi_hole < eps_hole  (holes)
+eps_ann=1e-16                  # accept if Phi_ann  < eps_ann   (stealthiness)
+eps_hole=1e-10                 # accept if Phi_hole < eps_hole  (holes)
 
 # ------------- do not touch ---------
 pi=`echo "4*a(1)" | bc -l`

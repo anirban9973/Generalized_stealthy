@@ -32,8 +32,8 @@ algorithm="algorithm LBFGS"
 
 lambda_h=1.0                   # hole penalty weight
 epsilon_grid=0.1               # coarser grid than the cluster -> faster on a laptop
-eps_ann=1e-8                   # accept if Phi_ann  < eps_ann
-eps_hole=1e-8                  # accept if Phi_hole < eps_hole
+eps_ann=1e-16                  # accept if Phi_ann  < eps_ann
+eps_hole=1e-10                 # accept if Phi_hole < eps_hole
 
 # --------------------------------
 # a-scaling (identical to the slurm): script multiplies k by a; the code divides back
